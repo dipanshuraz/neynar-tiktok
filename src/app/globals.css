@@ -1,6 +1,8 @@
 /* src/app/globals.css */
 
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* CSS Custom Properties */
 :root {
@@ -116,8 +118,18 @@ a:focus-visible {
   }
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
+/* Custom animations for video feed */
+@keyframes heart-beat {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.2); }
+  50% { transform: scale(1.1); }
+  75% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+@keyframes record-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes bounce-in {
@@ -135,8 +147,40 @@ a:focus-visible {
   }
 }
 
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Custom utility classes */
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
 .animate-bounce-in {
   animation: bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.animate-heart-beat {
+  animation: heart-beat 0.6s ease-in-out;
+}
+
+.animate-record-spin {
+  animation: record-spin 3s linear infinite;
+}
+
+/* TikTok-specific colors */
+.tiktok-red {
+  background: #FE2C55;
+}
+
+.tiktok-blue {
+  background: #25F4EE;
+}
+
+.tiktok-gradient {
+  background: linear-gradient(45deg, #FE2C55, #25F4EE);
 }
 
 /* Gradient text effects */
@@ -149,19 +193,11 @@ a:focus-visible {
   animation: gradient-shift 4s ease infinite;
 }
 
-@keyframes gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
 /* Performance optimizations for smooth scrolling */
 .scrollbar-none {
   scrollbar-width: none;
   -ms-overflow-style: none;
-  /* Enable hardware acceleration */
   transform: translateZ(0);
-  /* Optimize for smooth scrolling */
   -webkit-overflow-scrolling: touch;
 }
 
@@ -174,11 +210,8 @@ a:focus-visible {
   aspect-ratio: 9/16;
   max-height: 100vh;
   max-width: 100vw;
-  /* Hardware acceleration */
   transform: translateZ(0);
-  /* Prepare for animations */
   will-change: transform;
-  /* Optimize repainting */
   contain: layout style paint;
 }
 
@@ -186,14 +219,12 @@ a:focus-visible {
 .snap-container {
   scroll-snap-type: y mandatory;
   scroll-behavior: smooth;
-  /* Better scroll performance */
   overscroll-behavior: contain;
 }
 
 .snap-item {
   scroll-snap-align: start;
   scroll-snap-stop: always;
-  /* Contain repaints within each item */
   contain: layout style paint;
 }
 
@@ -223,7 +254,7 @@ a:focus-visible {
   }
 }
 
-/* Custom utility classes - replaced @apply with regular CSS */
+/* Button styles */
 .btn-primary {
   background-color: white;
   color: black;
@@ -347,48 +378,13 @@ body {
   }
 }
 
-/* TikTok-specific styles */
-@layer utilities {
-  .tiktok-red {
-    background: #FE2C55;
-  }
-
-  .tiktok-blue {
-    background: #25F4EE;
-  }
-
-  .tiktok-gradient {
-    background: linear-gradient(45deg, #FE2C55, #25F4EE);
-  }
-}
-
-/* TikTok-style animations */
-@keyframes heart-beat {
-  0% { transform: scale(1); }
-  25% { transform: scale(1.2); }
-  50% { transform: scale(1.1); }
-  75% { transform: scale(1.3); }
-  100% { transform: scale(1); }
-}
-
-@keyframes record-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@layer utilities {
-  .animate-heart-beat {
-    animation: heart-beat 0.6s ease-in-out;
-  }
-
-  .animate-record-spin {
-    animation: record-spin 3s linear infinite;
-  }
-}
-
 /* Dark mode (default) */
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
   }
+}
+/* Allow scrolling on specific pages */
+body:has([data-page="test"]) {
+  overflow: auto !important;
 }

@@ -1,10 +1,11 @@
-// src/components/VideoPlayer.tsx
+// src/components/VideoPlayer.tsx - FIXED VERSION
 
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { ProcessedVideo } from '@/types/neynar';
-import { Play, Volume2, VolumeX } from 'lucide-react';
+import { Play, Volume2, VolumeX, AlertCircle } from 'lucide-react';
+import Hls from 'hls.js';
 
 interface VideoPlayerProps {
   videos: ProcessedVideo[];
@@ -22,188 +23,180 @@ export default function VideoPlayer({
   className = '' 
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const hlsRef = useRef<Hls | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPlayButton, setShowPlayButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [playerType, setPlayerType] = useState<'video' | 'iframe' | 'link'>('video');
 
-  const currentVideo = videos[currentVideoIndex];
+  const currentVideo = videos?.[0];
 
-  // Determine player type
+  // Setup HLS - SIMPLIFIED, no isMounted check
   useEffect(() => {
-    if (!currentVideo) return;
-
-    if (currentVideo.contentType === 'text/html') {
-      if (isEmbeddableVideo(currentVideo.url)) {
-        setPlayerType('iframe');
-      } else {
-        setPlayerType('link');
-      }
-    } else {
-      setPlayerType('video');
+    if (!videoRef.current || !currentVideo?.url) {
+      console.log('⏳ Waiting for video element...', { 
+        hasRef: !!videoRef.current, 
+        hasUrl: !!currentVideo?.url 
+      });
+      return;
     }
-    
-    setIsLoading(false);
-    setError(null);
-  }, [currentVideo]);
 
-  // Auto play/pause based on visibility with performance optimization
-  useEffect(() => {
-    if (playerType !== 'video') return;
-    
     const video = videoRef.current;
-    if (!video) return;
+    const videoUrl = currentVideo.url;
+
+    console.log('🎬 Setting up HLS for:', videoUrl);
+    setIsLoading(true);
+    setError(null);
+
+    // Clean up previous
+    if (hlsRef.current) {
+      console.log('🧹 Destroying previous HLS');
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    // Safari native HLS
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      console.log('✅ Using native HLS (Safari)');
+      video.src = videoUrl;
+      video.load();
+      setIsLoading(false);
+      return;
+    }
+
+    // HLS.js
+    if (!Hls.isSupported()) {
+      console.error('❌ HLS.js not supported');
+      setError('HLS not supported in this browser');
+      setIsLoading(false);
+      return;
+    }
+
+    console.log('✅ Creating HLS.js instance');
+    const hls = new Hls({
+      debug: true,
+      enableWorker: true,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
+    });
+
+    hlsRef.current = hls;
+
+    hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+      console.log('📺 Media attached - loading source');
+      hls.loadSource(videoUrl);
+    });
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      console.log('✅ MANIFEST PARSED SUCCESS!');
+      setIsLoading(false);
+      setError(null);
+    });
+
+    hls.on(Hls.Events.ERROR, (event, data) => {
+      console.error('❌ HLS Error:', data);
+      if (data.fatal) {
+        setError(`HLS Error: ${data.details}`);
+        setIsLoading(false);
+      }
+    });
+
+    console.log('🔗 Attaching media to video element');
+    hls.attachMedia(video);
+
+    return () => {
+      console.log('🧹 Cleanup HLS');
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [currentVideo?.url]); // Only depend on URL change
+
+  // Playback control
+  useEffect(() => {
+    const video = videoRef.current;
+    
+    if (!video || isLoading || error) {
+      return;
+    }
 
     video.muted = isMuted;
 
-    // Use requestAnimationFrame for smoother transitions
-    const handleVideoState = () => {
-      if (isActive) {
-        // Preload video for smoother playback
-        if (video.readyState < 2) {
-          video.load();
-        }
-        
-        video.play()
-          .then(() => {
-            setIsPlaying(true);
-            setShowPlayButton(false);
-          })
-          .catch((err) => {
-            console.error('Auto-play failed:', err);
-            setIsPlaying(false);
-            setShowPlayButton(true);
-          });
-      } else {
-        video.pause();
-        setIsPlaying(false);
-      }
-    };
+    if (isActive) {
+      console.log('▶️ ATTEMPTING TO PLAY');
+      video.play()
+        .then(() => {
+          console.log('✅ PLAYING!');
+          setShowPlayButton(false);
+        })
+        .catch(err => {
+          console.warn('⚠️ Play failed:', err.message);
+          setShowPlayButton(true);
+        });
+    } else {
+      console.log('⏸️ PAUSING');
+      video.pause();
+    }
+  }, [isActive, isMuted, isLoading, error]);
 
-    // Delay video operations slightly to avoid blocking scroll
-    const timeoutId = setTimeout(handleVideoState, 16);
-    
-    return () => clearTimeout(timeoutId);
-  }, [isActive, playerType, currentVideoIndex, isMuted]);
-
-  // Handle video events
+  // Video events
   useEffect(() => {
-    if (playerType !== 'video') return;
-    
     const video = videoRef.current;
     if (!video) return;
 
-    const handleLoadedData = () => {
-      setIsLoading(false);
-      setError(null);
-    };
-
-    const handleError = () => {
-      setError('Failed to load video');
-      setIsLoading(false);
-    };
-
-    const handlePlay = () => {
+    const onPlay = () => {
+      console.log('🎬 Video playing event');
       setIsPlaying(true);
       setShowPlayButton(false);
     };
 
-    const handlePause = () => {
+    const onPause = () => {
+      console.log('⏸️ Video pause event');
       setIsPlaying(false);
-      setShowPlayButton(true);
     };
 
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setShowPlayButton(true);
+    const onLoadedMetadata = () => {
+      console.log('📊 Video metadata loaded');
     };
 
-    video.addEventListener('loadeddata', handleLoadedData);
-    video.addEventListener('error', handleError);
-    video.addEventListener('play', handlePlay);
-    video.addEventListener('pause', handlePause);
-    video.addEventListener('ended', handleEnded);
+    const onCanPlay = () => {
+      console.log('✅ Video can play');
+      setIsLoading(false);
+    };
+
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('canplay', onCanPlay);
 
     return () => {
-      video.removeEventListener('loadeddata', handleLoadedData);
-      video.removeEventListener('error', handleError);
-      video.removeEventListener('play', handlePlay);
-      video.removeEventListener('pause', handlePause);
-      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('canplay', onCanPlay);
     };
-  }, [playerType, currentVideoIndex]);
+  }, []);
 
-  const isEmbeddableVideo = (url: string): boolean => {
-    return url.includes('youtube.com') || 
-           url.includes('youtu.be') || 
-           url.includes('vimeo.com');
-  };
-
-  const getEmbedUrl = (url: string): string => {
-    if (url.includes('youtube.com/watch?v=')) {
-      const videoId = url.split('v=')[1]?.split('&')[0];
-      return `https://www.youtube.com/embed/${videoId}?autoplay=${isActive ? 1 : 0}&mute=${isMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0`;
-    }
-    if (url.includes('youtu.be/')) {
-      const videoId = url.split('youtu.be/')[1]?.split('?')[0];
-      return `https://www.youtube.com/embed/${videoId}?autoplay=${isActive ? 1 : 0}&mute=${isMuted ? 1 : 0}&controls=0&modestbranding=1&rel=0`;
-    }
-    
-    if (url.includes('vimeo.com/')) {
-      const videoId = url.split('vimeo.com/')[1]?.split('?')[0];
-      return `https://player.vimeo.com/video/${videoId}?autoplay=${isActive ? 1 : 0}&muted=${isMuted ? 1 : 0}&controls=0`;
-    }
-    
-    return url;
-  };
-
-  const togglePlay = () => {
-    if (playerType !== 'video') return;
-    
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (isPlaying) {
-      video.pause();
-    } else {
-      video.play().catch((err) => {
-        console.error('Play failed:', err);
-      });
-    }
-  };
-
-  const handleVideoClick = () => {
-    togglePlay();
-  };
-
-  // Loading state
-  if (isLoading) {
+  if (!currentVideo) {
     return (
-      <div className={`relative bg-black flex items-center justify-center ${className}`}>
-        <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+      <div className={`bg-black ${className} flex items-center justify-center`}>
+        <p className="text-white">No video</p>
       </div>
     );
   }
 
-  // Error state
-  if (error || !currentVideo) {
+  if (error) {
     return (
       <div className={`relative bg-gray-900 flex items-center justify-center ${className}`}>
-        <div className="text-white text-center p-8">
-          <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl">⚠️</span>
-          </div>
-          <p className="text-sm opacity-75 mb-4">
-            {error || 'Video unavailable'}
-          </p>
+        <div className="text-center p-6">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <p className="text-white mb-4">{error}</p>
           <button 
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-white/20 rounded-lg text-sm hover:bg-white/30 transition-colors"
+            className="px-4 py-2 bg-red-600 text-white rounded"
           >
-            Try Again
+            Reload
           </button>
         </div>
       </div>
@@ -211,14 +204,14 @@ export default function VideoPlayer({
   }
 
   return (
-    <div className={`relative ${className}`}>
-      {/* Mute/Unmute Button - Top Right */}
+    <div className={`relative bg-black ${className}`}>
+      {/* Mute Button */}
       <button
         onClick={(e) => {
           e.stopPropagation();
           onMuteToggle();
         }}
-        className="absolute top-4 right-4 z-50 w-10 h-10 bg-black/50 rounded-full flex items-center justify-center backdrop-blur-sm hover:bg-black/70 transition-colors"
+        className="absolute top-4 right-4 z-50 w-11 h-11 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
       >
         {isMuted ? (
           <VolumeX className="w-5 h-5 text-white" />
@@ -227,78 +220,41 @@ export default function VideoPlayer({
         )}
       </button>
 
-      {/* Video Player */}
-      {playerType === 'video' && (
-        <>
-          <video
-            ref={videoRef}
-            src={currentVideo.url}
-            poster={currentVideo.thumbnail}
-            loop
-            muted={isMuted}
-            playsInline
-            preload="metadata"
-            className="w-full h-full object-cover cursor-pointer"
-            onClick={handleVideoClick}
-            style={{
-              // Hardware acceleration for smooth playback
-              transform: 'translateZ(0)',
-              willChange: isPlaying ? 'transform' : 'auto'
-            }}
-          />
-          
-          {/* Play Button Overlay - Only show when paused */}
-          {showPlayButton && (
-            <div 
-              className="absolute inset-0 flex items-center justify-center cursor-pointer"
-              onClick={handleVideoClick}
-            >
-              <div className="w-16 h-16 bg-black/50 rounded-full flex items-center justify-center backdrop-blur-sm">
-                <Play className="w-8 h-8 text-white fill-white ml-1" />
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Embedded Video */}
-      {playerType === 'iframe' && (
-        <iframe
-          ref={iframeRef}
-          src={getEmbedUrl(currentVideo.url)}
-          className="w-full h-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        />
-      )}
-
-      {/* External Link */}
-      {playerType === 'link' && (
-        <div 
-          className="w-full h-full bg-gradient-to-b from-gray-800 to-gray-900 flex items-center justify-center cursor-pointer"
-          style={{
-            backgroundImage: currentVideo.thumbnail ? `linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.7)), url(${currentVideo.thumbnail})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-          onClick={() => window.open(currentVideo.url, '_blank')}
-        >
-          <div className="text-center">
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-              <Play className="w-8 h-8 text-white fill-white ml-1" />
-            </div>
-            <p className="text-white text-sm font-medium">Tap to watch</p>
-            <p className="text-white/70 text-xs mt-1">Opens in new tab</p>
+      {/* Video Element - ALWAYS RENDERED */}
+      <video
+        ref={videoRef}
+        loop
+        muted={isMuted}
+        playsInline
+        preload="auto"
+        className="w-full h-full object-cover cursor-pointer"
+        style={{ display: isLoading ? 'none' : 'block' }}
+        onClick={() => {
+          if (videoRef.current) {
+            if (isPlaying) videoRef.current.pause();
+            else videoRef.current.play();
+          }
+        }}
+      />
+      
+      {/* Loading Overlay */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black">
+          <div className="text-center p-4">
+            <div className="w-12 h-12 border-3 border-white/30 border-t-white rounded-full animate-spin mb-3 mx-auto"></div>
+            <p className="text-white text-sm mb-2">Loading video...</p>
+            <p className="text-white/60 text-xs">Active: {isActive ? 'Yes' : 'No'}</p>
+            <p className="text-white/60 text-xs">Has Ref: {videoRef.current ? 'Yes' : 'No'}</p>
           </div>
         </div>
       )}
 
-      {/* Multiple Videos Indicator */}
-      {videos.length > 1 && (
-        <div className="absolute top-4 left-4 bg-black/50 rounded-full px-3 py-1 backdrop-blur-sm">
-          <span className="text-white text-xs font-medium">
-            {currentVideoIndex + 1}/{videos.length}
-          </span>
+      {/* Play Button Overlay */}
+      {showPlayButton && !isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+          <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center hover:scale-110 transition-transform">
+            <Play className="w-10 h-10 text-white fill-white ml-1" />
+          </div>
         </div>
       )}
     </div>

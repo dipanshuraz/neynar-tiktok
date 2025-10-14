@@ -5,155 +5,75 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { NeynarFeedResponse, VideoFeedItem, Cast, CastEmbed, ProcessedVideo } from '@/types/neynar';
 
-// Comprehensive video detection and parsing
-class VideoParser {
-  private static readonly VIDEO_EXTENSIONS = [
-    '.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.flv', '.wmv', '.ogv'
-  ];
+// Configuration
+const USE_LOCAL_DATA = process.env.NEXT_PUBLIC_USE_DUMMY_DATA === 'true';
+const NEYNAR_API_KEY = process.env.NEXT_PUBLIC_NEYNAR_API_KEY;
+const DEFAULT_FID = process.env.NEXT_PUBLIC_DEFAULT_FID || '9152';
+const NEYNAR_API_URL = 'https://api.neynar.com/v2/farcaster/feed';
 
-  private static readonly VIDEO_DOMAINS = [
-    'youtube.com', 'youtu.be', 'vimeo.com', 'dailymotion.com', 'twitch.tv',
-    'twitter.com', 'x.com', 'instagram.com', 'tiktok.com', 'imgur.com',
-    'streamable.com', 'warpcast.com', 'farcaster.xyz'
-  ];
-
-  static extractVideosFromCast(cast: Cast): ProcessedVideo[] {
+// HLS-ONLY video parser - simplified
+class HLSVideoParser {
+  static extractHLSVideosFromCast(cast: Cast): ProcessedVideo[] {
     const videos: ProcessedVideo[] = [];
 
     for (const embed of cast.embeds) {
-      const extractedVideos = this.extractVideosFromEmbed(embed);
-      videos.push(...extractedVideos);
-    }
+      // Skip non-URL embeds
+      if (!embed.url) continue;
 
-    return videos;
-  }
-
-  private static extractVideosFromEmbed(embed: CastEmbed): ProcessedVideo[] {
-    const videos: ProcessedVideo[] = [];
-
-    // 1. Direct video metadata
-    if (embed.metadata?.video) {
-      const video = embed.metadata.video;
-      videos.push({
-        url: video.stream?.stream_url || video.url,
-        contentType: video.content_type,
-        width: video.width_px,
-        height: video.height_px,
-        duration: video.duration_s,
-        thumbnail: embed.metadata.image?.url,
-      });
-    }
-
-    // 2. Direct video URLs
-    if (embed.url && this.isDirectVideoUrl(embed.url)) {
-      videos.push({
-        url: embed.url,
-        contentType: this.getContentTypeFromUrl(embed.url),
-      });
-    }
-
-    // 3. Platform video URLs
-    if (embed.url && this.isVideoFromSupportedPlatform(embed.url)) {
-      videos.push({
-        url: embed.url,
-        contentType: 'text/html', // Indicates it needs iframe/embedding
-        thumbnail: embed.metadata?.image?.url,
-      });
-    }
-
-    // 4. Check for video content in HTML metadata
-    if (embed.metadata?.html && embed.url) {
-      const hasVideoIndicators = this.hasVideoIndicatorsInHtml(embed.metadata.html);
-      if (hasVideoIndicators) {
+      // Check if it's an HLS video
+      if (this.isHLSUrl(embed.url)) {
+        console.log('✅ Found HLS video:', embed.url);
+        
         videos.push({
           url: embed.url,
-          contentType: 'text/html',
-          thumbnail: embed.metadata.html.image || embed.metadata.image?.url,
+          contentType: 'application/vnd.apple.mpegurl',
+          width: embed.metadata?.video?.width_px,
+          height: embed.metadata?.video?.height_px,
+          duration: embed.metadata?.video?.duration_s,
+          thumbnail: embed.metadata?.image?.url,
         });
+      }
+      // Check metadata for HLS
+      else if (embed.metadata?.video) {
+        const videoUrl = embed.metadata.video.stream?.stream_url || 
+                        embed.metadata.video.url || 
+                        embed.url;
+        
+        if (videoUrl && this.isHLSUrl(videoUrl)) {
+          console.log('✅ Found HLS video in metadata:', videoUrl);
+          
+          videos.push({
+            url: videoUrl,
+            contentType: 'application/vnd.apple.mpegurl',
+            width: embed.metadata.video.width_px,
+            height: embed.metadata.video.height_px,
+            duration: embed.metadata.video.duration_s,
+            thumbnail: embed.metadata.image?.url,
+          });
+        }
       }
     }
 
     return videos;
   }
 
-  private static isDirectVideoUrl(url: string): boolean {
-    try {
-      const urlObj = new URL(url);
-      const pathname = urlObj.pathname.toLowerCase();
-      return this.VIDEO_EXTENSIONS.some(ext => pathname.includes(ext));
-    } catch {
-      return false;
-    }
-  }
-
-  private static isVideoFromSupportedPlatform(url: string): boolean {
-    try {
-      const urlObj = new URL(url);
-      const hostname = urlObj.hostname.toLowerCase();
-      
-      return this.VIDEO_DOMAINS.some(domain => 
-        hostname.includes(domain.toLowerCase())
-      ) || this.isSpecialVideoUrl(url);
-    } catch {
-      return false;
-    }
-  }
-
-  private static isSpecialVideoUrl(url: string): boolean {
-    // Twitter/X video patterns
-    if (url.includes('twitter.com') || url.includes('x.com')) {
-      return url.includes('/status/') || url.includes('/video/');
-    }
-
-    // Instagram video patterns
-    if (url.includes('instagram.com')) {
-      return url.includes('/reel/') || url.includes('/tv/') || url.includes('/p/');
-    }
-
-    // TikTok patterns
-    if (url.includes('tiktok.com')) {
-      return url.includes('/video/') || url.includes('/@');
-    }
-
-    return false;
-  }
-
-  private static hasVideoIndicatorsInHtml(html: any): boolean {
-    const videoIndicators = [
-      'video', 'youtube', 'vimeo', 'mp4', 'webm', 'player',
-      'stream', 'embed', 'watch', 'play'
-    ];
-
-    const textContent = JSON.stringify(html).toLowerCase();
-    return videoIndicators.some(indicator => textContent.includes(indicator));
-  }
-
-  private static getContentTypeFromUrl(url: string): string {
-    try {
-      const urlObj = new URL(url);
-      const pathname = urlObj.pathname.toLowerCase();
-      
-      if (pathname.includes('.mp4')) return 'video/mp4';
-      if (pathname.includes('.webm')) return 'video/webm';
-      if (pathname.includes('.mov')) return 'video/quicktime';
-      if (pathname.includes('.avi')) return 'video/x-msvideo';
-      if (pathname.includes('.mkv')) return 'video/x-matroska';
-      
-      return 'video/mp4'; // Default assumption
-    } catch {
-      return 'video/mp4';
-    }
+  private static isHLSUrl(url: string): boolean {
+    // Simple check: does it end with .m3u8 or contain stream.farcaster.xyz?
+    return url.includes('.m3u8') || url.includes('stream.farcaster.xyz');
   }
 }
 
-// Process casts and extract video items
-function processVideoFeed(casts: Cast[]): VideoFeedItem[] {
+// Process casts and extract ONLY HLS videos
+function processHLSVideoFeed(casts: Cast[]): VideoFeedItem[] {
   const videoItems: VideoFeedItem[] = [];
 
+  console.log(`🔍 Processing ${casts.length} casts for HLS videos...`);
+
   for (const cast of casts) {
-    const videos = VideoParser.extractVideosFromCast(cast);
+    const videos = HLSVideoParser.extractHLSVideosFromCast(cast);
     
     if (videos.length > 0) {
+      console.log(`✅ Cast by @${cast.author.username} has ${videos.length} HLS video(s)`);
       videoItems.push({
         id: cast.hash,
         cast,
@@ -162,119 +82,163 @@ function processVideoFeed(casts: Cast[]): VideoFeedItem[] {
     }
   }
 
+  console.log(`📊 Total HLS video items: ${videoItems.length}`);
   return videoItems;
 }
 
-// Simple pagination for static data
-function paginateData<T>(data: T[], cursor?: string, limit: number = 25): { 
-  items: T[], 
-  nextCursor?: string, 
-  hasMore: boolean 
-} {
-  const startIndex = cursor ? parseInt(cursor) : 0;
-  const endIndex = startIndex + limit;
-  const items = data.slice(startIndex, endIndex);
-  const hasMore = endIndex < data.length;
-  const nextCursor = hasMore ? endIndex.toString() : undefined;
+// Fetch from Neynar API
+async function fetchFromNeynar(cursor?: string, fid?: string): Promise<NeynarFeedResponse> {
+  if (!NEYNAR_API_KEY) {
+    throw new Error('NEXT_PUBLIC_NEYNAR_API_KEY is not configured');
+  }
 
-  return { items, nextCursor, hasMore };
+  const url = new URL(NEYNAR_API_URL);
+  url.searchParams.set('feed_type', 'filter');
+  url.searchParams.set('filter_type', 'global_trending');
+  url.searchParams.set('with_recasts', 'true');
+  url.searchParams.set('limit', '100'); // Fetch more to find HLS videos
+  url.searchParams.set('fid', fid || DEFAULT_FID);
+  
+  if (cursor) {
+    url.searchParams.set('cursor', cursor);
+  }
+
+  console.log(`🌐 Fetching from Neynar...`);
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      'x-api-key': NEYNAR_API_KEY,
+      'x-neynar-experimental': 'false',
+    },
+    next: { revalidate: 60 },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Neynar API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  console.log(`✅ Fetched ${data.casts?.length || 0} casts from Neynar`);
+  
+  return data;
+}
+
+// Fetch from local file
+async function fetchFromLocal(): Promise<NeynarFeedResponse> {
+  const filePath = path.join(process.cwd(), 'data', 'casts.json');
+  const fileContents = await fs.readFile(filePath, 'utf8');
+  const data = JSON.parse(fileContents);
+  console.log(`✅ Loaded ${data.casts?.length || 0} casts from local file`);
+  return data;
 }
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const cursor = searchParams.get('cursor');
+    const cursor = searchParams.get('cursor') || undefined;
+    const fid = searchParams.get('fid') || undefined;
     const limit = parseInt(searchParams.get('limit') || '25');
     
-    console.log(`📡 Fetching static data: limit=${limit}, cursor=${cursor || 'none'}`);
+    console.log(`\n📡 === Feed API Request ===`);
+    console.log(`Mode: ${USE_LOCAL_DATA ? 'LOCAL' : 'NEYNAR'}`);
+    console.log(`FID: ${fid || DEFAULT_FID}`);
+    console.log(`Cursor: ${cursor || 'none'}`);
+    console.log(`Limit: ${limit}`);
     
-    // Read static JSON file from /data/casts.json
-    const dataDirectory = path.join(process.cwd(), 'data');
-    const filePath = path.join(dataDirectory, 'casts.json');
+    // Fetch data
+    const neynarData = USE_LOCAL_DATA 
+      ? await fetchFromLocal() 
+      : await fetchFromNeynar(cursor, fid);
+
+    // Extract ONLY HLS videos
+    const allVideoItems = processHLSVideoFeed(neynarData.casts || []);
     
-    let fileContents: string;
-    try {
-      fileContents = await fs.readFile(filePath, 'utf8');
-    } catch (fileError) {
-      console.error('❌ Failed to read /data/casts.json:', fileError);
-      return NextResponse.json(
-        { 
-          error: 'Static data file not found',
-          details: 'Please ensure /data/casts.json exists in your project root'
-        },
-        { status: 404 }
-      );
+    if (allVideoItems.length === 0) {
+      console.warn('⚠️ No HLS videos found in the feed');
+      
+      // Log sample cast to help debug
+      if (neynarData.casts && neynarData.casts.length > 0) {
+        const sampleCast = neynarData.casts[0];
+        console.log('📝 Sample cast structure:', {
+          author: sampleCast.author.username,
+          embedsCount: sampleCast.embeds.length,
+          firstEmbed: sampleCast.embeds[0],
+        });
+      }
+      
+      return NextResponse.json({
+        videos: [],
+        nextCursor: undefined,
+        hasMore: false,
+        totalFound: 0,
+        message: 'No HLS (.m3u8) videos found. Try a different feed or check your data.'
+      });
     }
 
-    // Parse JSON data
-    let data: NeynarFeedResponse;
-    try {
-      data = JSON.parse(fileContents);
-    } catch (parseError) {
-      console.error('❌ Failed to parse JSON:', parseError);
-      return NextResponse.json(
-        { 
-          error: 'Invalid JSON format in casts.json',
-          details: 'Please ensure the JSON file is properly formatted'
-        },
-        { status: 400 }
-      );
+    // Pagination
+    let paginatedItems = allVideoItems;
+    let nextCursor: string | undefined;
+    let hasMore = false;
+
+    if (USE_LOCAL_DATA) {
+      // Simple pagination for local data
+      const startIndex = cursor ? parseInt(cursor) : 0;
+      const endIndex = startIndex + limit;
+      paginatedItems = allVideoItems.slice(startIndex, endIndex);
+      hasMore = endIndex < allVideoItems.length;
+      nextCursor = hasMore ? endIndex.toString() : undefined;
+    } else {
+      // For Neynar, return all found videos with original cursor
+      paginatedItems = allVideoItems.slice(0, limit);
+      nextCursor = neynarData.next?.cursor;
+      hasMore = !!nextCursor;
     }
 
-    console.log(`✅ Loaded ${data.casts?.length || 0} casts from static file`);
+    console.log(`✅ Returning ${paginatedItems.length} HLS videos`);
+    console.log(`Has more: ${hasMore}`);
     
-    // Process and filter video content
-    const allVideoItems = processVideoFeed(data.casts || []);
-    
-    // Apply pagination to the processed video items
-    const paginatedResult = paginateData(allVideoItems, cursor, limit);
-    
-    console.log(`🎬 Returning ${paginatedResult.items.length} video items (total available: ${allVideoItems.length})`);
-    
-    // Log some debug info about the videos found
-    paginatedResult.items.slice(0, 3).forEach((item, i) => {
-      console.log(`📹 Video ${i + 1}: ${item.videos.length} video(s), author: @${item.cast.author.username}`);
-    });
+    // Log first video for debugging
+    if (paginatedItems.length > 0) {
+      const firstVideo = paginatedItems[0];
+      console.log('📹 First video:', {
+        author: firstVideo.cast.author.username,
+        videoCount: firstVideo.videos.length,
+        firstUrl: firstVideo.videos[0]?.url,
+      });
+    }
     
     return NextResponse.json({
-      videos: paginatedResult.items,
-      nextCursor: paginatedResult.nextCursor,
-      hasMore: paginatedResult.hasMore,
-      totalFound: paginatedResult.items.length,
+      videos: paginatedItems,
+      nextCursor,
+      hasMore,
+      totalFound: paginatedItems.length,
       totalAvailable: allVideoItems.length,
     });
     
   } catch (error) {
     console.error('❌ Feed API error:', error);
+    
     return NextResponse.json(
       { 
-        error: 'Failed to fetch video feed from static data',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Failed to fetch video feed',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        mode: USE_LOCAL_DATA ? 'local' : 'neynar',
       },
       { status: 500 }
     );
   }
 }
 
-// Health check endpoint
+// Health check
 export async function POST() {
-  try {
-    // Check if the static file exists
-    const dataDirectory = path.join(process.cwd(), 'data');
-    const filePath = path.join(dataDirectory, 'casts.json');
-    await fs.access(filePath);
-    
-    return NextResponse.json({
-      status: 'API endpoint is working',
-      dataSource: 'static file: /data/casts.json',
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    return NextResponse.json({
-      status: 'API endpoint working but static file not found',
-      dataSource: 'missing: /data/casts.json',
-      error: 'Please add your static data file',
-      timestamp: new Date().toISOString(),
-    }, { status: 404 });
-  }
+  const mode = USE_LOCAL_DATA ? 'LOCAL' : 'NEYNAR';
+  const apiKeyConfigured = !!NEYNAR_API_KEY;
+  
+  return NextResponse.json({
+    status: 'healthy',
+    mode,
+    apiKeyConfigured: mode === 'NEYNAR' ? apiKeyConfigured : true,
+    hlsOnly: true,
+    timestamp: new Date().toISOString(),
+  });
 }
