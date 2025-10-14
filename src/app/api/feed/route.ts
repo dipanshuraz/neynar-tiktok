@@ -125,7 +125,7 @@ async function fetchFromNeynar(cursor?: string, fid?: string): Promise<NeynarFee
 
 // Fetch from local file
 async function fetchFromLocal(): Promise<NeynarFeedResponse> {
-  const filePath = path.join(process.cwd(), 'data', 'casts.json');
+  const filePath = path.join(process.cwd(), 'data', 'casts-1.json');
   const fileContents = await fs.readFile(filePath, 'utf8');
   const data = JSON.parse(fileContents);
   console.log(`✅ Loaded ${data.casts?.length || 0} casts from local file`);
