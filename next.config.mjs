@@ -17,7 +17,8 @@ const nextConfig = {
 
   // Experimental features for better performance
   experimental: {
-    optimizeCss: true, // Enable CSS optimization
+    // optimizeCss requires 'critters' package - disabled for now
+    // optimizeCss: true,
     optimizePackageImports: ['lucide-react'], // Optimize icon imports
   },
 

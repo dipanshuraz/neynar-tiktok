@@ -26,11 +26,11 @@ export function scheduleIdleTask(
   options?: { timeout?: number }
 ): number {
   if ('requestIdleCallback' in window) {
-    return window.requestIdleCallback(callback, options);
+    return (window as any).requestIdleCallback(callback, options);
   }
   
   // Fallback for browsers without requestIdleCallback
-  return window.setTimeout(callback, 1) as any;
+  return setTimeout(callback, 1) as unknown as number;
 }
 
 /**
@@ -39,7 +39,7 @@ export function scheduleIdleTask(
  */
 export function cancelIdleTask(handle: number): void {
   if ('cancelIdleCallback' in window) {
-    window.cancelIdleCallback(handle);
+    (window as any).cancelIdleCallback(handle);
   } else {
     clearTimeout(handle);
   }

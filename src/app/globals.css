@@ -44,11 +44,9 @@ html {
   }
 }
 
-/* Video element styles */
+/* Video element styles - controlled in components */
 video {
-  max-width: 100%;
-  height: auto;
-  object-fit: cover;
+  display: block; /* Remove inline spacing */
 }
 
 /* Hide default video controls */

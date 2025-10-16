@@ -122,7 +122,7 @@ function VideoPlayer({
       }
       video.src = videoUrl;
       video.load();
-      setIsLoading(false);
+      // Don't set isLoading to false - let the video events handle it
       return;
     }
 
@@ -179,8 +179,15 @@ function VideoPlayer({
           console.log(`✅ HLS manifest parsed in ${loadTime.toFixed(0)}ms`);
         }
       }
-      setIsLoading(false);
+      // Don't set isLoading to false here - wait for canplay event
       setError(null);
+    });
+    
+    hls.on(Hls.Events.FRAG_LOADED, () => {
+      // First fragment loaded - video should be ready soon
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📦 HLS fragment loaded');
+      }
     });
 
     hls.on(Hls.Events.ERROR, (event, data) => {
@@ -293,6 +300,10 @@ function VideoPlayer({
     };
 
     const onCanPlay = () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Video can play');
+      }
+      
       setIsLoading(false);
       
       // Report successful load if there was a previous error
@@ -303,6 +314,21 @@ function VideoPlayer({
       }
       
       setError(null); // Clear error on successful load
+    };
+    
+    const onLoadStart = () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏳ Video load started');
+      }
+      setIsLoading(true);
+    };
+    
+    const onLoadedData = () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📦 Video data loaded');
+      }
+      // Video has loaded enough to start playing
+      setIsLoading(false);
     };
     
     const onError = (e: Event) => {
@@ -336,6 +362,8 @@ function VideoPlayer({
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('loadstart', onLoadStart);
+    video.addEventListener('loadeddata', onLoadedData);
     video.addEventListener('canplay', onCanPlay);
     video.addEventListener('error', onError);
 
@@ -343,6 +371,8 @@ function VideoPlayer({
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('loadstart', onLoadStart);
+      video.removeEventListener('loadeddata', onLoadedData);
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('error', onError);
     };
@@ -417,12 +447,13 @@ function VideoPlayer({
         playsInline
         preload={shouldPreload || isActive ? "auto" : "metadata"} // Auto for preload/active, metadata otherwise
         poster={currentVideo.thumbnail} // Native poster attribute as fallback
-        className="w-full h-full object-cover cursor-pointer"
+        className="w-full h-full object-cover cursor-pointer" // object-cover for mobile fullscreen
         style={{ 
-          display: (isLoading && !currentVideo.thumbnail) || showPoster ? 'none' : 'block',
+          display: showPoster ? 'none' : 'block',
           transform: 'translateZ(0)', // Force GPU acceleration
           backfaceVisibility: 'hidden',
-          WebkitBackfaceVisibility: 'hidden'
+          WebkitBackfaceVisibility: 'hidden',
+          backgroundColor: '#000'
         }}
         onClick={handleVideoClick}
       />
@@ -447,15 +478,10 @@ function VideoPlayer({
         </div>
       )}
       
-      {/* Loading Overlay */}
-      {isLoading && !showPoster && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black">
-          <div className="text-center p-4">
-            <div className="w-12 h-12 border-3 border-white/30 border-t-white rounded-full animate-spin mb-3 mx-auto"></div>
-            <p className="text-white text-sm mb-2">Loading video...</p>
-            <p className="text-white/60 text-xs">Active: {isActive ? 'Yes' : 'No'}</p>
-            <p className="text-white/60 text-xs">Has Ref: {videoRef.current ? 'Yes' : 'No'}</p>
-          </div>
+      {/* Loading Overlay - Simple circular loader only */}
+      {isLoading && !showPoster && !error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
+          <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
         </div>
       )}
 

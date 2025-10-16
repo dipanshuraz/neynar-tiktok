@@ -115,7 +115,7 @@ function VideoFeedItemComponent({
               <img
                 src={cast.author.pfp_url || '/default-avatar.png'}
                 alt={cast.author.display_name}
-                className="w-10 h-10 rounded-full border-2 border-white"
+                className="w-10 h-10 rounded-full border-2 border-white object-cover"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/default-avatar.png';
                 }}
@@ -152,7 +152,7 @@ function VideoFeedItemComponent({
                 <img
                   src={cast.channel.image_url || '/default-channel.png'}
                   alt={cast.channel.name}
-                  className="w-5 h-5 rounded"
+                  className="w-5 h-5 rounded object-cover"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = '/default-channel.png';
                   }}
@@ -173,7 +173,7 @@ function VideoFeedItemComponent({
               <img
                 src={cast.author.pfp_url || '/default-avatar.png'}
                 alt={cast.author.display_name}
-                className="w-12 h-12 rounded-full border-2 border-white"
+                className="w-12 h-12 rounded-full border-2 border-white object-cover"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/default-avatar.png';
                 }}
