@@ -51,12 +51,8 @@ export default function VideoFeed({
   const [restoringPosition, setRestoringPosition] = useState(false); // Track if restoring saved position
   const [isHydrated, setIsHydrated] = useState(false); // Track if client has hydrated (for SSR)
   
-  // Debug: Log initial state - ONLY RUN ONCE
-  const hasMountedRef = useRef(false);
+  // Debug: Log initial state on mount ONLY
   useEffect(() => {
-    if (hasMountedRef.current) return;
-    hasMountedRef.current = true;
-    
     if (process.env.NODE_ENV === 'development') {
       console.log('🎬 VideoFeed mounted:', {
         initialVideosCount: initialVideos.length,
@@ -66,15 +62,7 @@ export default function VideoFeed({
         nextCursor: nextCursor?.substring(0, 15) + '...',
       });
     }
-    
-    // Emergency fallback: If SSR returned empty and we're not loading, start loading
-    if (initialVideos.length === 0 && !loading && videos.length === 0) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('⚠️ SSR returned empty, triggering client-side fetch...');
-      }
-      setLoading(true);
-    }
-  }, [initialVideos.length, loading, videos.length, hasMore, nextCursor]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -508,6 +496,14 @@ export default function VideoFeed({
   }, [isMobile]);
 
   useEffect(() => {
+    // If we already have videos from SSR, don't fetch again
+    if (initialVideos.length > 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Already have SSR videos, skipping fetch');
+      }
+      return;
+    }
+    
     // Wait for preferences to load before deciding what to fetch
     if (!preferencesLoaded) {
       if (process.env.NODE_ENV === 'development') {
@@ -516,8 +512,11 @@ export default function VideoFeed({
       return;
     }
     
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🚀 Calling loadInitialVideos...');
+    }
     loadInitialVideos();
-  }, [loadInitialVideos, preferencesLoaded]);
+  }, [loadInitialVideos, preferencesLoaded, initialVideos.length]);
 
   // Ensure first video is active on mount (mobile only)
   // This runs once when videos first load to trigger autoplay
