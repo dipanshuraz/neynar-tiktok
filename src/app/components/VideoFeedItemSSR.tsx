@@ -18,11 +18,11 @@ export default function VideoFeedItemSSR({ item }: VideoFeedItemSSRProps) {
 
   return (
     <div
-      className="w-full h-full snap-start snap-always relative overflow-hidden"
+      className="relative w-full h-screen bg-black"
       data-ssr-video="true"
       style={{
-        contain: 'strict',
         willChange: 'transform',
+        contain: 'layout style paint'
       }}
     >
       {/* Video placeholder with poster */}
@@ -143,14 +143,6 @@ export default function VideoFeedItemSSR({ item }: VideoFeedItemSSRProps) {
         </div>
       </div>
 
-      {/* Loading indicator for SSR (hidden during hydration) */}
-      <div 
-        className="absolute inset-0 flex items-center justify-center bg-black/40 z-20"
-        data-ssr-loading="true"
-        suppressHydrationWarning
-      >
-        <div className="text-white text-sm">Loading video...</div>
-      </div>
     </div>
   );
 }

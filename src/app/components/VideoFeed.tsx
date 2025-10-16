@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, startTransition, laz
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import VideoFeedItemComponent from './VideoFeedItem';
+import VideoFeedItemSSR from './VideoFeedItemSSR';
 import { VideoFeedItem } from '@/types/neynar';
 import { rafThrottle } from '../utils/taskScheduler';
 import { useFirstInteraction, measureFirstInputDelay } from '../hooks/useFirstInteraction';
@@ -47,6 +48,7 @@ export default function VideoFeed({
   const [isMobile, setIsMobile] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true); // Track play/pause state
   const [restoringPosition, setRestoringPosition] = useState(false); // Track if restoring saved position
+  const [isHydrated, setIsHydrated] = useState(false); // Track if client has hydrated (for SSR)
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -60,6 +62,11 @@ export default function VideoFeed({
   
   // Monitor network quality for adaptive preloading
   const networkInfo = useNetworkQuality();
+  
+  // Mark as hydrated on client mount (for SSR)
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
   
   // Sync isMuted state with preferences when they load from localStorage
   useEffect(() => {
@@ -550,6 +557,10 @@ export default function VideoFeed({
             // Network-aware preloading: adapts based on connection speed
             const shouldPreload = shouldPreloadVideo(currentIndex, index, networkInfo);
             
+            // Use SSR component for first video until hydration completes
+            const isFirstVideo = index === 0 && initialVideos.length > 0;
+            const useSSR = isFirstVideo && !isHydrated;
+            
             return (
               <div
                 key={video.id}
@@ -565,16 +576,20 @@ export default function VideoFeed({
                 }}
               >
                 {isInRange ? (
-                  <VideoFeedItemComponent
-                    item={video}
-                    isActive={index === currentIndex}
-                    isMuted={isMuted}
-                    onMuteToggle={handleMuteToggle}
-                    isMobile={true}
-                    shouldPreload={shouldPreload}
-                    networkSpeed={networkInfo.speed}
-                    shouldPlay={isPlaying}
-                  />
+                  useSSR ? (
+                    <VideoFeedItemSSR item={video} />
+                  ) : (
+                    <VideoFeedItemComponent
+                      item={video}
+                      isActive={index === currentIndex}
+                      isMuted={isMuted}
+                      onMuteToggle={handleMuteToggle}
+                      isMobile={true}
+                      shouldPreload={shouldPreload}
+                      networkSpeed={networkInfo.speed}
+                      shouldPlay={isPlaying}
+                    />
+                  )
                 ) : (
                   <div className="w-full h-full bg-gray-900" />
                 )}
