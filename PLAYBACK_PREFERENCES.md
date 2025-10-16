@@ -1,5 +1,9 @@
 # 📼 Playback Preferences
 
+> **✅ CRITICAL FIX (Oct 16, 2025)**: Mute state persistence bug resolved!  
+> **Issue**: Mute state not persisting across refreshes  
+> **Status**: FIXED ✅ - See [PLAYBACK_PREFERENCES_FIX.md](./PLAYBACK_PREFERENCES_FIX.md)
+
 ## Overview
 
 The Farcaster Video Feed now **remembers your preferences** across sessions using localStorage. When you return, the app will:
