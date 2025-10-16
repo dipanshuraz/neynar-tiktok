@@ -322,13 +322,23 @@ Total: 1 API call, 25 videos fetched ✨
 
 ### Storage Keys
 
+**Stored in IndexedDB** (with localStorage fallback):
 ```typescript
-localStorage:
+IndexedDB: 'farcaster-feed-db' > 'preferences' store
   'farcaster-feed-last-index': '45'               // Global position
   'farcaster-feed-last-cursor': 'eyJvZmZzZXQi...' // API cursor
   'farcaster-feed-last-video-id': '0xabc...'      // Video hash
   'farcaster-feed-mute-state': 'true'             // Mute state
 ```
+
+**Why IndexedDB?**
+- ✅ **Async** - Non-blocking operations (no UI lag)
+- ✅ **Larger storage** - 50MB+ vs 5-10MB for localStorage  
+- ✅ **Better mobile support** - More reliable on iOS/Android
+- ✅ **Structured data** - Direct object storage
+- ✅ **Auto-fallback** - Uses localStorage if IndexedDB unavailable
+
+**Implementation:** `src/app/utils/storage.ts`
 
 ### Example Flow
 

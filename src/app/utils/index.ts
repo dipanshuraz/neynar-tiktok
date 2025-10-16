@@ -16,3 +16,7 @@ export * from './dom';
 // Formatting utilities
 export * from './format';
 
+// Storage utilities
+export { default as storage } from './storage';
+export * from './storage';
+

@@ -1,8 +1,9 @@
-// Persist playback preferences in localStorage
+// Persist playback preferences with IndexedDB (localStorage fallback)
 
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import storage from '../utils/storage';
 
 const STORAGE_KEYS = {
   MUTE_STATE: 'farcaster-feed-mute-state',
@@ -52,109 +53,122 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
     
     if (typeof window === 'undefined') return;
 
-    try {
-      const stored: Partial<PlaybackPreferences> = {
-        isMuted: localStorage.getItem(STORAGE_KEYS.MUTE_STATE) === 'true',
-        lastVideoIndex: parseInt(localStorage.getItem(STORAGE_KEYS.LAST_VIDEO_INDEX) || '0', 10),
-        lastVideoId: localStorage.getItem(STORAGE_KEYS.LAST_VIDEO_ID),
-        lastCursor: localStorage.getItem(STORAGE_KEYS.LAST_CURSOR),
-        playbackSpeed: parseFloat(localStorage.getItem(STORAGE_KEYS.PLAYBACK_SPEED) || '1.0'),
-        volume: parseFloat(localStorage.getItem(STORAGE_KEYS.VOLUME) || '0.8'),
-      };
+    const loadPreferences = async () => {
+      try {
+        const [isMuted, lastVideoIndex, lastVideoId, lastCursor, playbackSpeed, volume] = await Promise.all([
+          storage.get<string>(STORAGE_KEYS.MUTE_STATE),
+          storage.get<string>(STORAGE_KEYS.LAST_VIDEO_INDEX),
+          storage.get<string>(STORAGE_KEYS.LAST_VIDEO_ID),
+          storage.get<string>(STORAGE_KEYS.LAST_CURSOR),
+          storage.get<string>(STORAGE_KEYS.PLAYBACK_SPEED),
+          storage.get<string>(STORAGE_KEYS.VOLUME),
+        ]);
 
-      setPreferences(prev => ({
-        ...prev,
-        ...stored,
-      }));
+        const stored: Partial<PlaybackPreferences> = {
+          isMuted: isMuted === 'true',
+          lastVideoIndex: parseInt(lastVideoIndex || '0', 10),
+          lastVideoId: lastVideoId,
+          lastCursor: lastCursor,
+          playbackSpeed: parseFloat(playbackSpeed || '1.0'),
+          volume: parseFloat(volume || '0.8'),
+        };
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log('📼 Loaded playback preferences:', stored);
+        setPreferences(prev => ({
+          ...prev,
+          ...stored,
+        }));
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📼 Loaded playback preferences from', storage.isUsingIndexedDB() ? 'IndexedDB' : 'localStorage', stored);
+        }
+      } catch (error) {
+        console.error('Failed to load playback preferences:', error);
       }
-    } catch (error) {
-      console.error('Failed to load playback preferences:', error);
-    }
+    };
+
+    loadPreferences();
   }, []);
 
   const setMuted = useCallback((muted: boolean) => {
     if (!isClient) return;
     
-    try {
-      localStorage.setItem(STORAGE_KEYS.MUTE_STATE, String(muted));
-      setPreferences(prev => ({ ...prev, isMuted: muted }));
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`🔇 Mute state saved: ${muted}`);
-      }
-    } catch (error) {
-      console.error('Failed to save mute state:', error);
-    }
+    storage.set(STORAGE_KEYS.MUTE_STATE, String(muted))
+      .then(() => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`🔇 Mute state saved: ${muted}`);
+        }
+      })
+      .catch(error => console.error('Failed to save mute state:', error));
+    
+    setPreferences(prev => ({ ...prev, isMuted: muted }));
   }, [isClient]);
 
   const setLastVideoIndex = useCallback((index: number, videoId?: string, cursor?: string) => {
     if (!isClient) return;
     
-    try {
-      localStorage.setItem(STORAGE_KEYS.LAST_VIDEO_INDEX, String(index));
-      if (videoId) {
-        localStorage.setItem(STORAGE_KEYS.LAST_VIDEO_ID, videoId);
-      }
-      if (cursor) {
-        localStorage.setItem(STORAGE_KEYS.LAST_CURSOR, cursor);
-      }
-      
-      setPreferences(prev => ({
-        ...prev,
-        lastVideoIndex: index,
-        lastVideoId: videoId || prev.lastVideoId,
-        lastCursor: cursor || prev.lastCursor,
-      }));
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`📍 Last position saved: index ${index}${videoId ? `, id ${videoId.substring(0, 10)}...` : ''}${cursor ? `, cursor ${cursor.substring(0, 10)}...` : ''}`);
-      }
-    } catch (error) {
-      console.error('Failed to save last video position:', error);
+    const updates = [
+      storage.set(STORAGE_KEYS.LAST_VIDEO_INDEX, String(index)),
+    ];
+    
+    if (videoId) {
+      updates.push(storage.set(STORAGE_KEYS.LAST_VIDEO_ID, videoId));
     }
+    if (cursor) {
+      updates.push(storage.set(STORAGE_KEYS.LAST_CURSOR, cursor));
+    }
+    
+    Promise.all(updates)
+      .then(() => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`📍 Last position saved: index ${index}${videoId ? `, id ${videoId.substring(0, 10)}...` : ''}${cursor ? `, cursor ${cursor.substring(0, 10)}...` : ''}`);
+        }
+      })
+      .catch(error => console.error('Failed to save last video position:', error));
+    
+    setPreferences(prev => ({
+      ...prev,
+      lastVideoIndex: index,
+      lastVideoId: videoId || prev.lastVideoId,
+      lastCursor: cursor || prev.lastCursor,
+    }));
   }, [isClient]);
 
   const setPlaybackSpeed = useCallback((speed: number) => {
     if (!isClient) return;
     
-    try {
-      localStorage.setItem(STORAGE_KEYS.PLAYBACK_SPEED, String(speed));
-      setPreferences(prev => ({ ...prev, playbackSpeed: speed }));
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`⚡ Playback speed saved: ${speed}x`);
-      }
-    } catch (error) {
-      console.error('Failed to save playback speed:', error);
-    }
+    storage.set(STORAGE_KEYS.PLAYBACK_SPEED, String(speed))
+      .then(() => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`⚡ Playback speed saved: ${speed}x`);
+        }
+      })
+      .catch(error => console.error('Failed to save playback speed:', error));
+    
+    setPreferences(prev => ({ ...prev, playbackSpeed: speed }));
   }, [isClient]);
 
   const setVolume = useCallback((volume: number) => {
     if (!isClient) return;
     
-    try {
-      const clampedVolume = Math.max(0, Math.min(1, volume));
-      localStorage.setItem(STORAGE_KEYS.VOLUME, String(clampedVolume));
-      setPreferences(prev => ({ ...prev, volume: clampedVolume }));
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`🔊 Volume saved: ${(clampedVolume * 100).toFixed(0)}%`);
-      }
-    } catch (error) {
-      console.error('Failed to save volume:', error);
-    }
+    const clampedVolume = Math.max(0, Math.min(1, volume));
+    
+    storage.set(STORAGE_KEYS.VOLUME, String(clampedVolume))
+      .then(() => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`🔊 Volume saved: ${(clampedVolume * 100).toFixed(0)}%`);
+        }
+      })
+      .catch(error => console.error('Failed to save volume:', error));
+    
+    setPreferences(prev => ({ ...prev, volume: clampedVolume }));
   }, [isClient]);
 
-  const clearPreferences = useCallback(() => {
+  const clearPreferences = useCallback(async () => {
     if (!isClient) return;
     
     try {
-      Object.values(STORAGE_KEYS).forEach(key => {
-        localStorage.removeItem(key);
-      });
+      const removePromises = Object.values(STORAGE_KEYS).map(key => storage.remove(key));
+      await Promise.all(removePromises);
       
       setPreferences(DEFAULT_PREFERENCES);
       

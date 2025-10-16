@@ -217,8 +217,10 @@ farcaster-video-feed/
 │   │   └── VideoPlayer.tsx # HLS video player
 │   ├── config/            # Configuration
 │   ├── hooks/             # Custom React hooks
+│   │   └── usePlaybackPreferences.ts # IndexedDB preferences
 │   ├── lib/               # Server-side utilities
 │   ├── utils/             # Client utilities
+│   │   └── storage.ts     # IndexedDB wrapper (localStorage fallback)
 │   └── page.tsx           # Home page
 ├── data/                  # Local cached data
 ├── public/                # Static assets
@@ -265,11 +267,18 @@ The app automatically remembers where you left off using **cursor-based restorat
 
 ### Storage
 
-Saved to browser localStorage:
+Saved to **IndexedDB** (with localStorage fallback):
 - `lastVideoIndex` - Global video number (e.g., 45)
 - `lastCursor` - API cursor to fetch that batch
 - `lastVideoId` - Video hash for verification
 - `isMuted` - Your mute preference
+
+**Why IndexedDB?**
+- ✅ **Async** - Non-blocking, no UI lag
+- ✅ **Larger storage** - 50MB+ vs 5-10MB for localStorage
+- ✅ **Better mobile support** - More reliable on iOS/Android
+- ✅ **Structured data** - Direct object storage
+- ✅ **Auto-fallback** - Uses localStorage if IndexedDB unavailable
 
 ### Example
 
