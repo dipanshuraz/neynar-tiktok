@@ -378,6 +378,10 @@ You can't improve what you don't measure. Real-time overlay helps catch issues e
 ## 🚀 Git History
 
 ```bash
+7d9ee98 - update performance summary with network efficiency
+ba27440 - implement adaptive network-aware preloading
+67108d2 - add complete video startup section to performance summary
+d0bcbd6 - update performance summary with video startup optimization
 e702d58 - optimize video startup time to < 200ms
 9fa41fb - update performance summary with memory management
 0a78133 - implement memory leak prevention for stable heap
