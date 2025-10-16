@@ -116,7 +116,7 @@ async function fetchFromNeynar(limit: number = 25): Promise<NeynarFeedResponse> 
   url.searchParams.set('filter_type', 'embed_types');
   url.searchParams.set('embed_types', 'video');
   url.searchParams.set('with_recasts', 'true');
-  url.searchParams.set('limit', limit.toString());
+  url.searchParams.set('limit', '50'); // Request more to ensure we get enough videos after filtering
 
   const response = await fetch(url.toString(), {
     headers: {
@@ -124,6 +124,7 @@ async function fetchFromNeynar(limit: number = 25): Promise<NeynarFeedResponse> 
       'x-neynar-experimental': 'false',
     },
     next: { revalidate: 60 },
+    signal: AbortSignal.timeout(10000), // 10s timeout for SSR
   });
 
   if (!response.ok) {
@@ -150,10 +151,20 @@ export async function fetchInitialVideos(): Promise<VideoFeedResponse> {
   try {
     const limit = 25; // Full first batch for position restoration
     
+    // Debug logging
+    console.log('🔧 SSR Config:', {
+      useLocalData: USE_LOCAL_DATA,
+      hasApiKey: !!NEYNAR_API_KEY,
+      apiKeyPrefix: NEYNAR_API_KEY ? `${NEYNAR_API_KEY.substring(0, 8)}...` : 'MISSING',
+    });
+    
     if (USE_LOCAL_DATA) {
       // Load from local JSON
+      console.log('📁 Loading local data from casts-3.json...');
       const casts = await loadLocalData(limit);
       const videoItems = processVideoFeed(casts);
+      
+      console.log(`✅ Loaded ${videoItems.length} video items from local data`);
       
       return {
         videos: videoItems.slice(0, limit),
@@ -161,23 +172,35 @@ export async function fetchInitialVideos(): Promise<VideoFeedResponse> {
         hasMore: videoItems.length > limit,
       };
     } else {
+      if (!NEYNAR_API_KEY) {
+        console.error('❌ NEXT_PUBLIC_NEYNAR_API_KEY is not set!');
+        throw new Error('NEXT_PUBLIC_NEYNAR_API_KEY is required');
+      }
+      
       // Fetch from Neynar API
+      console.log('🌐 Fetching from Neynar API...');
       const data = await fetchFromNeynar(limit);
-      const videoItems = processVideoFeed(data.casts || []);
+      const allVideoItems = processVideoFeed(data.casts || []);
+      
+      console.log(`✅ Loaded ${allVideoItems.length} video items from Neynar (${data.casts?.length || 0} casts)`);
+      
+      // Return only requested limit
+      const videoItems = allVideoItems.slice(0, limit);
       
       return {
         videos: videoItems,
         nextCursor: data.next?.cursor,
-        hasMore: !!data.next?.cursor,
+        hasMore: !!data.next?.cursor || allVideoItems.length > limit,
       };
     }
   } catch (error) {
     console.error('❌ Error fetching initial videos (SSR):', error);
+    console.error('   Stack:', error instanceof Error ? error.stack : 'Unknown');
     
     // Fallback: return empty (client will fetch later)
     return {
       videos: [],
-      hasMore: false,
+      hasMore: true, // Allow client to try fetching
     };
   }
 }

@@ -9,8 +9,11 @@ export default async function Home() {
   // This allows the first video to render without JavaScript
   const initialData = await fetchInitialVideos();
   
-  // Get first video thumbnail for early preload
-  const firstVideoThumbnail = initialData.videos[0]?.videos[0]?.thumbnail;
+  // Get first video info for preloading
+  const firstVideo = initialData.videos[0]?.videos[0];
+  const firstVideoUrl = firstVideo?.url;
+  const firstVideoThumbnail = firstVideo?.thumbnail;
+  const isHLS = firstVideo?.videoType === 'hls';
 
   return (
     <main className="relative bg-black">
@@ -23,11 +26,23 @@ export default async function Home() {
 
       {/* Resource hints for better performance */}
       <div className="hidden">
+        {/* Preload HLS.js module for instant video playback */}
+        {isHLS && (
+          <link rel="modulepreload" href="/_next/static/chunks/hls.js" />
+        )}
+        
+        {/* Preload first video URL */}
+        {firstVideoUrl && (
+          <link rel="preload" href={firstVideoUrl} as={isHLS ? 'fetch' : 'video'} />
+        )}
+        
+        {/* Preload first video thumbnail for LCP */}
+        {firstVideoThumbnail && (
+          <link rel="preload" href={firstVideoThumbnail} as="image" fetchPriority="high" />
+        )}
+        
         <link rel="preload" href="/default-avatar.png" as="image" />
         <link rel="preload" href="/default-channel.png" as="image" />
-        {firstVideoThumbnail && (
-          <link rel="preload" href={firstVideoThumbnail} as="image" />
-        )}
       </div>
     </main>
   );

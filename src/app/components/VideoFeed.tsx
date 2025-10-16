@@ -49,6 +49,23 @@ export default function VideoFeed({
   const [isPlaying, setIsPlaying] = useState(true); // Track play/pause state
   const [restoringPosition, setRestoringPosition] = useState(false); // Track if restoring saved position
   const [isHydrated, setIsHydrated] = useState(false); // Track if client has hydrated (for SSR)
+  
+  // Debug: Log initial state
+  useEffect(() => {
+    console.log('🎬 VideoFeed mounted:', {
+      initialVideosCount: initialVideos.length,
+      videosCount: videos.length,
+      loading,
+      hasMore,
+      nextCursor: nextCursor?.substring(0, 15) + '...',
+    });
+    
+    // Emergency fallback: If SSR returned empty and we're not loading, start loading
+    if (initialVideos.length === 0 && !loading && videos.length === 0) {
+      console.log('⚠️ SSR returned empty, triggering client-side fetch...');
+      setLoading(true);
+    }
+  }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -564,8 +581,9 @@ export default function VideoFeed({
           {/* Virtual scrolling: Keep only 3-5 video DOM nodes mounted */}
           {videos.map((video, index) => {
             const isInRange = Math.abs(index - currentIndex) <= 2; // Keep 2 before/after = 5 videos max (current + 2 before + 2 after)
-            // Network-aware preloading: adapts based on connection speed
-            const shouldPreload = shouldPreloadVideo(currentIndex, index, networkInfo);
+            // Ultra-aggressive preloading: load next 3 videos immediately
+            const distanceFromCurrent = index - currentIndex;
+            const shouldPreload = distanceFromCurrent >= 0 && distanceFromCurrent <= 3; // Preload current + next 3
             
             // Use SSR component for first video until hydration completes
             const isFirstVideo = index === 0 && initialVideos.length > 0;

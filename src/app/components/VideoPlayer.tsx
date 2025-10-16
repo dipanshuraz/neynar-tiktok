@@ -25,6 +25,14 @@ async function getHls() {
   return HlsClass;
 }
 
+// Eagerly start loading HLS.js on first module load (parallel with app init)
+// This reduces the delay when the first video needs it
+if (typeof window !== 'undefined') {
+  getHls().catch(() => {
+    // Silently ignore errors - will retry when needed
+  });
+}
+
 interface VideoPlayerProps {
   videos: ProcessedVideo[];
   isActive: boolean;
@@ -170,23 +178,11 @@ function VideoPlayer({
     }, delay);
   }, [retryCount]);
 
-  // Setup Video - Load when active OR when should preload (HLS + Direct Videos)
+  // Setup Video - ALWAYS load video as soon as component mounts (aggressive preloading)
   useEffect(() => {
-    const shouldLoad = isActive || shouldPreload;
-    
-    if (!videoRef.current || !currentVideo?.url || !shouldLoad) {
-      // Don't destroy HLS immediately when inactive - keep it ready for quick return
-      // Only clear loading state
-      if (!isActive && isLoading) {
-        setIsLoading(false);
-      }
-      
-      if (process.env.NODE_ENV === 'development' && videoRef.current && currentVideo?.url) {
-        console.log('⏸️ Video inactive, keeping HLS instance ready...', { 
-          isActive,
-          shouldPreload 
-        });
-      }
+    // ALWAYS load video immediately for instant playback
+    // Don't wait for shouldPreload or isActive
+    if (!videoRef.current || !currentVideo?.url) {
       return;
     }
 
@@ -194,14 +190,12 @@ function VideoPlayer({
     const videoUrl = currentVideo.url;
     const videoType = currentVideo.videoType;
 
-    // Track preload start time
-    if (shouldPreload && !isActive) {
-      preloadStartTimeRef.current = performance.now();
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`🔄 Preloading ${videoType.toUpperCase()} video:`, videoUrl);
-      }
-    } else if (isActive && process.env.NODE_ENV === 'development') {
-      console.log(`🎬 Setting up ${videoType.toUpperCase()} video:`, videoUrl);
+    // Track load start time
+    preloadStartTimeRef.current = performance.now();
+    
+    if (process.env.NODE_ENV === 'development') {
+      const status = isActive ? '🎬 Active' : (shouldPreload ? '⚡ Preload' : '📦 Background');
+      console.log(`${status} loading ${videoType.toUpperCase()}:`, videoUrl.substring(0, 50) + '...');
     }
     
     setIsLoading(true);
@@ -265,30 +259,36 @@ function VideoPlayer({
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const timeoutMultiplier = isMobile ? 0.5 : 1; // Half timeouts on mobile
       
+      // Ultra-low latency settings for preloading
+      const isPreloading = shouldPreload && !isActive;
+      
       const hls = new HlsClass({
         debug: false, // Disable debug in production for performance
         enableWorker: true,
-        // Network-adaptive buffer settings
-        maxBufferLength: bufferSettings.maxBufferLength,
-        maxMaxBufferLength: bufferSettings.maxMaxBufferLength,
-        maxBufferSize: bufferSettings.maxBufferSize,
-        maxBufferHole: 0.5, // Jump over small holes
+        // Ultra-low buffer for fast startup
+        maxBufferLength: isPreloading ? 2 : bufferSettings.maxBufferLength, // Minimal buffer for preload
+        maxMaxBufferLength: isPreloading ? 3 : bufferSettings.maxMaxBufferLength,
+        maxBufferSize: isPreloading ? 0.5 * 1000 * 1000 : bufferSettings.maxBufferSize, // 0.5MB for preload
+        maxBufferHole: 0.3, // Jump over tiny holes
         lowLatencyMode: true,
         backBufferLength: 0, // Don't keep old segments
-        // Aggressive manifest loading for mobile
-        manifestLoadingTimeOut: 5000 * timeoutMultiplier, // 5s desktop, 2.5s mobile
-        manifestLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
-        manifestLoadingRetryDelay: 500, // Faster retry
-        // Aggressive fragment loading for mobile
-        fragLoadingTimeOut: 10000 * timeoutMultiplier, // 10s desktop, 5s mobile
-        fragLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
-        fragLoadingRetryDelay: 500,
+        // Aggressive manifest loading
+        manifestLoadingTimeOut: 3000 * timeoutMultiplier, // 3s desktop, 1.5s mobile
+        manifestLoadingMaxRetry: 1, // Single retry for speed
+        manifestLoadingRetryDelay: 300, // Fast retry
+        // Aggressive fragment loading
+        fragLoadingTimeOut: 5000 * timeoutMultiplier, // 5s desktop, 2.5s mobile
+        fragLoadingMaxRetry: 1, // Single retry
+        fragLoadingRetryDelay: 300,
         liveSyncDurationCount: 1,
-        liveMaxLatencyDurationCount: 3,
+        liveMaxLatencyDurationCount: 2,
         // Abort controller for stalled requests
         xhrSetup: function(xhr: XMLHttpRequest) {
-          xhr.timeout = 5000 * timeoutMultiplier; // 5s desktop, 2.5s mobile
+          xhr.timeout = 3000 * timeoutMultiplier; // 3s desktop, 1.5s mobile
         },
+        // Start loading immediately
+        startPosition: 0,
+        autoStartLoad: true,
       });
       
       if (process.env.NODE_ENV === 'development') {
@@ -685,6 +685,7 @@ function VideoPlayer({
         playsInline
         preload="auto" // Always auto-load for instant playback
         poster={currentVideo.thumbnail} // Native poster attribute as fallback
+        fetchpriority={isActive ? 'high' : (shouldPreload ? 'high' : 'low')} // High priority for active and next videos
         className={`w-full h-full cursor-pointer ${isVerticalVideo ? 'object-cover' : 'object-contain'}`} // object-cover for 9:16, object-contain for others
         style={{ 
           display: showPoster ? 'none' : 'block',
