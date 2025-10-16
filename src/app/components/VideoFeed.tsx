@@ -21,13 +21,24 @@ interface VideoFeedResponse {
   hasMore: boolean;
 }
 
-export default function VideoFeed() {
-  const [videos, setVideos] = useState<VideoFeedItem[]>([]);
+interface VideoFeedProps {
+  initialVideos?: VideoFeedItem[];
+  initialCursor?: string;
+  initialHasMore?: boolean;
+}
+
+export default function VideoFeed({ 
+  initialVideos = [], 
+  initialCursor,
+  initialHasMore = true 
+}: VideoFeedProps) {
+  // Initialize with SSR data for instant first render
+  const [videos, setVideos] = useState<VideoFeedItem[]>(initialVideos);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialVideos.length === 0); // Not loading if we have SSR data
   const [error, setError] = useState<string | null>(null);
-  const [nextCursor, setNextCursor] = useState<string | undefined>();
-  const [hasMore, setHasMore] = useState(true);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(initialCursor);
+  const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isMobile, setIsMobile] = useState(true);
@@ -85,6 +96,16 @@ export default function VideoFeed() {
   }, []);
 
   const loadInitialVideos = useCallback(async () => {
+    // Skip if we already have SSR data
+    if (initialVideos.length > 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ Using ${initialVideos.length} SSR videos (no fetch needed)`);
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Otherwise fetch client-side
     try {
       setLoading(true);
       const data = await fetchVideos();
@@ -94,7 +115,7 @@ export default function VideoFeed() {
         return;
       }
       
-      console.log(`✅ Loaded ${data.videos.length} videos`);
+      console.log(`✅ Loaded ${data.videos.length} videos (client-side)`);
       setVideos(data.videos);
       setNextCursor(data.nextCursor);
       setHasMore(data.hasMore);
@@ -104,7 +125,7 @@ export default function VideoFeed() {
     } finally {
       setLoading(false);
     }
-  }, [fetchVideos]);
+  }, [fetchVideos, initialVideos.length]);
 
   const loadMoreVideos = useCallback(async () => {
     if (!hasMore || loadingMore || !nextCursor) return;
