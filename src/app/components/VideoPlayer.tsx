@@ -7,6 +7,7 @@ import { ProcessedVideo } from '@/types/neynar';
 import { Play, Volume2, VolumeX, AlertCircle } from 'lucide-react';
 import Hls from 'hls.js';
 import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
+import { reportVideoStartup } from '../hooks/useVideoStartupMetrics';
 
 interface VideoPlayerProps {
   videos: ProcessedVideo[];
@@ -14,6 +15,7 @@ interface VideoPlayerProps {
   isMuted: boolean;
   onMuteToggle: () => void;
   className?: string;
+  shouldPreload?: boolean; // Preload video in background for fast startup
 }
 
 function VideoPlayer({ 
@@ -21,7 +23,8 @@ function VideoPlayer({
   isActive, 
   isMuted, 
   onMuteToggle, 
-  className = '' 
+  className = '',
+  shouldPreload = false
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -29,20 +32,25 @@ function VideoPlayer({
   const [showPlayButton, setShowPlayButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const preloadStartTimeRef = useRef<number>(0);
+  const playbackStartTimeRef = useRef<number>(0);
 
   // Track memory usage in development
   useComponentMemoryTracking('VideoPlayer');
 
   const currentVideo = videos?.[0];
 
-  // Setup HLS - Only load when active or about to be active
+  // Setup HLS - Load when active OR when should preload
   useEffect(() => {
-    if (!videoRef.current || !currentVideo?.url || !isActive) {
+    const shouldLoad = isActive || shouldPreload;
+    
+    if (!videoRef.current || !currentVideo?.url || !shouldLoad) {
       if (process.env.NODE_ENV === 'development') {
-        console.log('⏳ Waiting for video element or not active...', { 
+        console.log('⏳ Waiting for video element...', { 
           hasRef: !!videoRef.current, 
           hasUrl: !!currentVideo?.url,
-          isActive 
+          isActive,
+          shouldPreload 
         });
       }
       return;
@@ -51,9 +59,16 @@ function VideoPlayer({
     const video = videoRef.current;
     const videoUrl = currentVideo.url;
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🎬 Setting up HLS for:', videoUrl);
+    // Track preload start time
+    if (shouldPreload && !isActive) {
+      preloadStartTimeRef.current = performance.now();
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 Preloading video:', videoUrl);
+      }
+    } else if (isActive && process.env.NODE_ENV === 'development') {
+      console.log('🎬 Setting up HLS for active video:', videoUrl);
     }
+    
     setIsLoading(true);
     setError(null);
 
@@ -88,10 +103,24 @@ function VideoPlayer({
     const hls = new Hls({
       debug: false, // Disable debug in production for performance
       enableWorker: true,
-      maxBufferLength: 10, // Reduce buffer for faster startup
-      maxMaxBufferLength: 30, // Reduce max buffer
+      // Optimize for fast startup
+      maxBufferLength: 5, // Reduced from 10 for faster startup
+      maxMaxBufferLength: 15, // Reduced from 30
+      maxBufferSize: 60 * 1000 * 1000, // 60 MB
+      maxBufferHole: 0.5, // Jump over small holes
       lowLatencyMode: true,
       backBufferLength: 0, // Don't keep old segments
+      // Fast manifest loading
+      manifestLoadingTimeOut: 10000,
+      manifestLoadingMaxRetry: 2,
+      manifestLoadingRetryDelay: 1000,
+      // Fast fragment loading
+      fragLoadingTimeOut: 20000,
+      fragLoadingMaxRetry: 3,
+      fragLoadingRetryDelay: 1000,
+      // Start playback ASAP
+      liveSyncDurationCount: 1,
+      liveMaxLatencyDurationCount: 3,
     });
 
     hlsRef.current = hls;
@@ -101,6 +130,14 @@ function VideoPlayer({
     });
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      const loadTime = performance.now() - preloadStartTimeRef.current;
+      if (process.env.NODE_ENV === 'development') {
+        if (shouldPreload && !isActive) {
+          console.log(`✅ Video preloaded in ${loadTime.toFixed(0)}ms`);
+        } else {
+          console.log(`✅ HLS manifest parsed in ${loadTime.toFixed(0)}ms`);
+        }
+      }
       setIsLoading(false);
       setError(null);
     });
@@ -129,7 +166,7 @@ function VideoPlayer({
         videoRef.current.load();
       }
     };
-  }, [currentVideo?.url, isActive]); // Depend on URL and isActive
+  }, [currentVideo?.url, isActive, shouldPreload]); // Depend on URL, isActive, and shouldPreload
 
   // Playback control
   useEffect(() => {
@@ -142,8 +179,20 @@ function VideoPlayer({
     video.muted = isMuted;
 
     if (isActive) {
+      // Track time from entering view to playback start
+      playbackStartTimeRef.current = performance.now();
+      
       video.play()
         .then(() => {
+          const startupTime = performance.now() - playbackStartTimeRef.current;
+          
+          // Report startup time for metrics tracking
+          reportVideoStartup(startupTime, shouldPreload);
+          
+          if (process.env.NODE_ENV === 'development') {
+            const status = startupTime < 200 ? '✅' : '⚠️';
+            console.log(`${status} Video startup: ${startupTime.toFixed(0)}ms (target: < 200ms)`);
+          }
           setShowPlayButton(false);
         })
         .catch(err => {
@@ -255,7 +304,7 @@ function VideoPlayer({
         loop
         muted={isMuted}
         playsInline
-        preload="metadata" // Changed from 'auto' to 'metadata' for better performance
+        preload={shouldPreload || isActive ? "auto" : "metadata"} // Auto for preload/active, metadata otherwise
         className="w-full h-full object-cover cursor-pointer"
         style={{ 
           display: isLoading ? 'none' : 'block',

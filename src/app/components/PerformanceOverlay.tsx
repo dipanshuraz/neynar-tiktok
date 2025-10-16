@@ -5,6 +5,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLongTaskMonitor } from '../hooks/useLongTaskMonitor';
 import { useMemoryMonitor, formatBytes, triggerGC } from '../hooks/useMemoryMonitor';
+import { useVideoStartupMetrics, getStartupPerformanceStatus } from '../hooks/useVideoStartupMetrics';
 
 interface PerformanceStats {
   fps: number;
@@ -24,6 +25,7 @@ export default function PerformanceOverlay() {
   const [isVisible, setIsVisible] = useState(true);
   const longTaskStats = useLongTaskMonitor(50);
   const memoryMetrics = useMemoryMonitor(5000, 5); // Check every 5s, leak threshold 5
+  const startupMetrics = useVideoStartupMetrics();
   const fpsHistoryRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
@@ -229,6 +231,46 @@ export default function PerformanceOverlay() {
               >
                 🗑️ Force GC
               </button>
+            </div>
+          </>
+        )}
+
+        {/* Video Startup Section */}
+        {startupMetrics.totalStartups > 0 && (
+          <>
+            <div className="h-px bg-white/10 my-2" />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60">Startup:</span>
+                <span className={`font-bold text-[10px] ${
+                  startupMetrics.avgStartupTime < 200 ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  {startupMetrics.avgStartupTime}ms
+                </span>
+              </div>
+              
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60 text-[10px]">Last:</span>
+                <span className={`text-[9px] ${
+                  startupMetrics.lastStartupTime < 200 ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  {startupMetrics.lastStartupTime.toFixed(0)}ms
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60 text-[10px]">Range:</span>
+                <span className="text-white text-[9px]">
+                  {startupMetrics.minStartupTime.toFixed(0)}-{startupMetrics.maxStartupTime.toFixed(0)}ms
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60 text-[10px]">Total:</span>
+                <span className="text-white text-[9px]">
+                  {startupMetrics.totalStartups} starts
+                </span>
+              </div>
             </div>
           </>
         )}

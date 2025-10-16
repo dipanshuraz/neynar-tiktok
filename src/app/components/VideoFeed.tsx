@@ -274,6 +274,7 @@ export default function VideoFeed() {
           {/* Virtual scrolling: Only render visible videos */}
           {videos.map((video, index) => {
             const isInRange = Math.abs(index - currentIndex) <= 1;
+            const shouldPreload = Math.abs(index - currentIndex) === 1; // Preload adjacent videos
             
             return (
               <div
@@ -296,6 +297,7 @@ export default function VideoFeed() {
                     isMuted={isMuted}
                     onMuteToggle={handleMuteToggle}
                     isMobile={true}
+                    shouldPreload={shouldPreload}
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-900" />

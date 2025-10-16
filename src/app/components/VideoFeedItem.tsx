@@ -13,6 +13,7 @@ interface VideoFeedItemProps {
   isMuted: boolean;
   onMuteToggle: () => void;
   isMobile?: boolean;
+  shouldPreload?: boolean; // Pass through to VideoPlayer
 }
 
 function VideoFeedItemComponent({ 
@@ -20,7 +21,8 @@ function VideoFeedItemComponent({
   isActive,
   isMuted,
   onMuteToggle,
-  isMobile = true
+  isMobile = true,
+  shouldPreload = false
 }: VideoFeedItemProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -96,6 +98,7 @@ function VideoFeedItemComponent({
           isMuted={isMuted}
           onMuteToggle={onMuteToggle}
           className="w-full h-full"
+          shouldPreload={shouldPreload}
         />
 
         {/* TikTok-Style Overlays */}
@@ -266,6 +269,7 @@ export default memo(VideoFeedItemComponent, (prevProps, nextProps) => {
     prevProps.item.id === nextProps.item.id &&
     prevProps.isActive === nextProps.isActive &&
     prevProps.isMuted === nextProps.isMuted &&
-    prevProps.isMobile === nextProps.isMobile
+    prevProps.isMobile === nextProps.isMobile &&
+    prevProps.shouldPreload === nextProps.shouldPreload
   );
 });
