@@ -111,14 +111,9 @@ export default function VideoFeed({
     };
   }, []);
 
-  // Get FID from URL query params (e.g., ?fid=3621)
-  const searchParams = useSearchParams();
-  const fidFromUrl = searchParams?.get('fid') || undefined;
-  
   const fetchVideos = useCallback(async (cursor?: string): Promise<VideoFeedResponse> => {
     const url = new URL('/api/feed', window.location.origin);
     if (cursor) url.searchParams.set('cursor', cursor);
-    if (fidFromUrl) url.searchParams.set('fid', fidFromUrl);
 
     const response = await fetch(url.toString(), { 
       cache: 'no-store',
@@ -127,7 +122,7 @@ export default function VideoFeed({
     if (!response.ok) throw new Error('Failed to fetch');
     
     return response.json();
-  }, [fidFromUrl]);
+  }, []);
 
   const loadInitialVideos = useCallback(async () => {
     // Skip if we already have SSR data

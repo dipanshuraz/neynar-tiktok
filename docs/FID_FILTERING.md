@@ -44,7 +44,7 @@ The `/api/feed` route now:
 3. Filters results by that FID
 
 **When `NEXT_PUBLIC_USE_DUMMY_DATA=true` (Local Data):**
-- Reads from `data/casts-1.json`
+- Reads from `data/casts-2.json`
 - Filters casts where `cast.author.fid === targetFid`
 - Returns only videos from that user
 
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
 ```typescript
 async function fetchFromLocal(fid?: string): Promise<NeynarFeedResponse> {
-  const filePath = path.join(process.cwd(), 'data', 'casts-1.json');
+  const filePath = path.join(process.cwd(), 'data', 'casts-2.json');
   const fileContents = await fs.readFile(filePath, 'utf8');
   const data = JSON.parse(fileContents);
   
@@ -132,7 +132,7 @@ cat .env.local
 # Should show: NEXT_PUBLIC_USE_DUMMY_DATA=true
 
 # 2. Find FIDs in your local data
-cat data/casts-1.json | grep -o '"fid":[0-9]*' | sort -u | head -10
+cat data/casts-2.json | grep -o '"fid":[0-9]*' | sort -u | head -10
 
 # 3. Test filtering
 open http://localhost:3000?fid=3621
@@ -173,7 +173,7 @@ FID is usually shown in the profile or you can use a Farcaster explorer
 ### Method 2: From Local Data
 ```bash
 # Extract all FIDs and their usernames from local data
-cat data/casts-1.json | jq '.casts[] | {fid: .author.fid, username: .author.username}' | head -20
+cat data/casts-2.json | jq '.casts[] | {fid: .author.fid, username: .author.username}' | head -20
 ```
 
 ### Method 3: Using Neynar API
