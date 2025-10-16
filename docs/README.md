@@ -52,6 +52,11 @@ Comprehensive documentation for the Farcaster Video Feed project.
 ### Features
 - **[PLAYBACK_PREFERENCES.md](./PLAYBACK_PREFERENCES.md)** - Saved preferences (mute, position)
 - **[FID_FILTERING.md](./FID_FILTERING.md)** - Filter videos by Farcaster ID (URL param)
+- **[UNIVERSAL_VIDEO_FORMAT.md](./UNIVERSAL_VIDEO_FORMAT.md)** - Universal video format support (HLS, MP4, WebM, MOV, OGG)
+
+### Video Format Analysis
+- **[VIDEO_FORMAT_ANALYSIS.md](./VIDEO_FORMAT_ANALYSIS.md)** - Analysis of video formats in Farcaster data
+- **[FARCASTER_VIDEO_FORMATS.md](./FARCASTER_VIDEO_FORMATS.md)** - Farcaster video ecosystem overview
 
 ---
 
@@ -77,17 +82,24 @@ Comprehensive documentation for the Farcaster Video Feed project.
 **Feature Documentation**:
 - [PLAYBACK_PREFERENCES.md](./PLAYBACK_PREFERENCES.md)
 - [FID_FILTERING.md](./FID_FILTERING.md)
+- [UNIVERSAL_VIDEO_FORMAT.md](./UNIVERSAL_VIDEO_FORMAT.md)
+
+**Video Format Documentation**:
+- [VIDEO_FORMAT_ANALYSIS.md](./VIDEO_FORMAT_ANALYSIS.md)
+- [FARCASTER_VIDEO_FORMATS.md](./FARCASTER_VIDEO_FORMATS.md)
+- [UNIVERSAL_VIDEO_FORMAT.md](./UNIVERSAL_VIDEO_FORMAT.md)
 
 ---
 
 ## 📊 Document Statistics
 
-- **Total Documents**: 22 files
-- **Total Lines**: ~5,900+ lines of documentation
+- **Total Documents**: 25 files
+- **Total Lines**: ~7,000+ lines of documentation
 - **Performance Docs**: 11 files
 - **Architecture Docs**: 2 files
 - **Bug Fix Docs**: 3 files
-- **Feature Docs**: 2 files
+- **Feature Docs**: 3 files
+- **Video Format Docs**: 3 files
 - **Troubleshooting**: 1 file
 - **Summary Docs**: 3 files
 

@@ -73,7 +73,7 @@ function VideoPlayer({
     }, delay);
   }, [retryCount]);
 
-  // Setup HLS - Load when active OR when should preload
+  // Setup Video - Load when active OR when should preload (HLS + Direct Videos)
   useEffect(() => {
     const shouldLoad = isActive || shouldPreload;
     
@@ -106,15 +106,16 @@ function VideoPlayer({
 
     const video = videoRef.current;
     const videoUrl = currentVideo.url;
+    const videoType = currentVideo.videoType;
 
     // Track preload start time
     if (shouldPreload && !isActive) {
       preloadStartTimeRef.current = performance.now();
       if (process.env.NODE_ENV === 'development') {
-        console.log('🔄 Preloading video:', videoUrl);
+        console.log(`🔄 Preloading ${videoType.toUpperCase()} video:`, videoUrl);
       }
     } else if (isActive && process.env.NODE_ENV === 'development') {
-      console.log('🎬 Setting up HLS for active video:', videoUrl);
+      console.log(`🎬 Setting up ${videoType.toUpperCase()} video:`, videoUrl);
     }
     
     setIsLoading(true);
@@ -123,6 +124,18 @@ function VideoPlayer({
     // Clean up previous
     cleanup();
 
+    // Handle direct video formats (MP4, WebM, MOV, OGG)
+    if (videoType !== 'hls') {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ Using native HTML5 video for ${videoType.toUpperCase()}`);
+      }
+      video.src = videoUrl;
+      video.load();
+      // Let video events handle isLoading state
+      return;
+    }
+
+    // HLS format - use Safari native or HLS.js
     // Safari native HLS
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       if (process.env.NODE_ENV === 'development') {

@@ -112,9 +112,12 @@ export interface NeynarFeedResponse {
   };
 }
 
+export type VideoType = 'hls' | 'mp4' | 'webm' | 'mov' | 'ogg' | 'unknown';
+
 export interface ProcessedVideo {
   url: string;
   contentType?: string;
+  videoType: VideoType; // Type of video for player selection
   width?: number;
   height?: number;
   duration?: number;

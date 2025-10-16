@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { NeynarFeedResponse, VideoFeedItem, Cast, CastEmbed, ProcessedVideo } from '@/types/neynar';
+import { NeynarFeedResponse, VideoFeedItem, Cast, CastEmbed, ProcessedVideo, VideoType } from '@/types/neynar';
 
 // Configuration
 const USE_LOCAL_DATA = process.env.NEXT_PUBLIC_USE_DUMMY_DATA === 'true';
@@ -10,21 +10,21 @@ const NEYNAR_API_KEY = process.env.NEXT_PUBLIC_NEYNAR_API_KEY;
 const DEFAULT_FID = process.env.NEXT_PUBLIC_DEFAULT_FID || '9152';
 const NEYNAR_API_URL = 'https://api.neynar.com/v2/farcaster/feed';
 
-// HLS-ONLY video parser - simplified
-class HLSVideoParser {
-  static extractHLSVideosFromCast(cast: Cast): ProcessedVideo[] {
+class UniversalVideoParser {
+  static extractVideosFromCast(cast: Cast): ProcessedVideo[] {
     const videos: ProcessedVideo[] = [];
 
     for (const embed of cast.embeds) {
-      // Skip non-URL embeds
       if (!embed.url) continue;
 
-      if (this.isHLSUrl(embed.url)) {
-        console.log('✅ Found HLS video:', embed.url);
+      const videoInfo = this.detectVideoType(embed.url);
+      if (videoInfo) {
+        console.log(`✅ Found ${videoInfo.type.toUpperCase()} video:`, embed.url);
         
         videos.push({
           url: embed.url,
-          contentType: 'application/vnd.apple.mpegurl',
+          contentType: videoInfo.contentType,
+          videoType: videoInfo.type,
           width: embed.metadata?.video?.width_px,
           height: embed.metadata?.video?.height_px,
           duration: embed.metadata?.video?.duration_s,
@@ -36,17 +36,21 @@ class HLSVideoParser {
                         embed.metadata.video.url || 
                         embed.url;
         
-        if (videoUrl && this.isHLSUrl(videoUrl)) {
-          console.log('✅ Found HLS video in metadata:', videoUrl);
-          
-          videos.push({
-            url: videoUrl,
-            contentType: 'application/vnd.apple.mpegurl',
-            width: embed.metadata.video.width_px,
-            height: embed.metadata.video.height_px,
-            duration: embed.metadata.video.duration_s,
-            thumbnail: embed.metadata.image?.url,
-          });
+        if (videoUrl) {
+          const videoInfo = this.detectVideoType(videoUrl);
+          if (videoInfo) {
+            console.log(`✅ Found ${videoInfo.type.toUpperCase()} video in metadata:`, videoUrl);
+            
+            videos.push({
+              url: videoUrl,
+              contentType: embed.metadata.video.content_type || videoInfo.contentType,
+              videoType: videoInfo.type,
+              width: embed.metadata.video.width_px,
+              height: embed.metadata.video.height_px,
+              duration: embed.metadata.video.duration_s,
+              thumbnail: embed.metadata?.image?.url,
+            });
+          }
         }
       }
     }
@@ -54,23 +58,44 @@ class HLSVideoParser {
     return videos;
   }
 
-  private static isHLSUrl(url: string): boolean {
-    // Simple check: does it end with .m3u8 or contain stream.farcaster.xyz?
-    return url.includes('.m3u8') || url.includes('stream.farcaster.xyz');
+  private static detectVideoType(url: string): { type: VideoType; contentType: string } | null {
+    const lowerUrl = url.toLowerCase();
+
+    if (lowerUrl.includes('.m3u8') || lowerUrl.includes('stream.farcaster.xyz')) {
+      return { type: 'hls', contentType: 'application/vnd.apple.mpegurl' };
+    }
+    
+    if (lowerUrl.endsWith('.mp4') || lowerUrl.includes('.mp4?') || lowerUrl.includes('.mp4#')) {
+      return { type: 'mp4', contentType: 'video/mp4' };
+    }
+    
+    if (lowerUrl.endsWith('.webm') || lowerUrl.includes('.webm?') || lowerUrl.includes('.webm#')) {
+      return { type: 'webm', contentType: 'video/webm' };
+    }
+    
+    if (lowerUrl.endsWith('.mov') || lowerUrl.includes('.mov?') || lowerUrl.includes('.mov#')) {
+      return { type: 'mov', contentType: 'video/quicktime' };
+    }
+    
+    if (lowerUrl.endsWith('.ogg') || lowerUrl.endsWith('.ogv') || lowerUrl.includes('.ogg?')) {
+      return { type: 'ogg', contentType: 'video/ogg' };
+    }
+
+    return null;
   }
 }
 
-// Process casts and extract ONLY HLS videos
-function processHLSVideoFeed(casts: Cast[]): VideoFeedItem[] {
+function processVideoFeed(casts: Cast[]): VideoFeedItem[] {
   const videoItems: VideoFeedItem[] = [];
 
-  console.log(`🔍 Processing ${casts.length} casts for HLS videos...`);
+  console.log(`🔍 Processing ${casts.length} casts for videos (all formats)...`);
 
   for (const cast of casts) {
-    const videos = HLSVideoParser.extractHLSVideosFromCast(cast);
+    const videos = UniversalVideoParser.extractVideosFromCast(cast);
     
     if (videos.length > 0) {
-      console.log(`✅ Cast by @${cast.author.username} has ${videos.length} HLS video(s)`);
+      const types = videos.map(v => v.videoType.toUpperCase()).join(', ');
+      console.log(`✅ Cast by @${cast.author.username} has ${videos.length} video(s): ${types}`);
       videoItems.push({
         id: cast.hash,
         cast,
@@ -79,7 +104,7 @@ function processHLSVideoFeed(casts: Cast[]): VideoFeedItem[] {
     }
   }
 
-  console.log(`📊 Total HLS video items: ${videoItems.length}`);
+  console.log(`📊 Total video items: ${videoItems.length}`);
   return videoItems;
 }
 
@@ -120,7 +145,7 @@ async function fetchFromNeynar(cursor?: string, fid?: string): Promise<NeynarFee
 }
 
 async function fetchFromLocal(fid?: string): Promise<NeynarFeedResponse> {
-  const filePath = path.join(process.cwd(), 'data', 'casts-1.json');
+  const filePath = path.join(process.cwd(), 'data', 'casts-2.json');
   const fileContents = await fs.readFile(filePath, 'utf8');
   const data = JSON.parse(fileContents);
   console.log(`✅ Loaded ${data.casts?.length || 0} casts from local file`);
@@ -145,7 +170,7 @@ export async function GET(request: NextRequest) {
       : await fetchFromNeynar(cursor, fid);
 
     // Extract ONLY HLS videos
-    const allVideoItems = processHLSVideoFeed(neynarData.casts || []);
+    const allVideoItems = processVideoFeed(neynarData.casts || []);
     
     if (allVideoItems.length === 0) {
       console.warn('⚠️ No HLS videos found in the feed');

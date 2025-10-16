@@ -2,11 +2,6 @@
 // Server-side data fetching for SSR
 
 import { VideoFeedItem } from '@/types/neynar';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-// Environment check
-const USE_LOCAL_DATA = process.env.NEXT_PUBLIC_USE_DUMMY_DATA === 'true';
 
 interface VideoFeedResponse {
   videos: VideoFeedItem[];
@@ -20,24 +15,10 @@ interface VideoFeedResponse {
  */
 export async function fetchInitialVideos(): Promise<VideoFeedResponse> {
   try {
-    // For local development, use cached data
-    if (USE_LOCAL_DATA) {
-      const filePath = path.join(process.cwd(), 'data', 'casts.json');
-      const fileContents = await fs.readFile(filePath, 'utf8');
-      const data = JSON.parse(fileContents);
-      
-      return {
-        videos: data.videos || [],
-        nextCursor: data.nextCursor,
-        hasMore: data.hasMore || false,
-      };
-    }
-
-    // For production, fetch from API route
+    // Always fetch from API route (which handles local vs. remote data)
     // Use the full URL since we're on the server
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const response = await fetch(`${baseUrl}/api/feed`, {
-      // Use cache for SSR, but revalidate
+    const response = await fetch(`${baseUrl}/api/feed?limit=1`, {
       next: { revalidate: 60 }, // Revalidate every 60 seconds
     });
 
@@ -48,27 +29,13 @@ export async function fetchInitialVideos(): Promise<VideoFeedResponse> {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching initial videos:', error);
+    console.error('Error fetching initial videos (SSR):', error);
     
-    // Fallback: Try to use cached data
-    try {
-      const filePath = path.join(process.cwd(), 'data', 'casts.json');
-      const fileContents = await fs.readFile(filePath, 'utf8');
-      const data = JSON.parse(fileContents);
-      
-      return {
-        videos: data.videos || [],
-        nextCursor: data.nextCursor,
-        hasMore: data.hasMore || false,
-      };
-    } catch (fallbackError) {
-      // Last resort: return empty
-      console.error('Fallback also failed:', fallbackError);
-      return {
-        videos: [],
-        hasMore: false,
-      };
-    }
+    // Fallback: return empty (client will fetch later)
+    return {
+      videos: [],
+      hasMore: false,
+    };
   }
 }
 
