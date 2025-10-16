@@ -264,6 +264,107 @@ if (currentIndex >= videos.length - 5) {
 
 ---
 
+## 📍 Last Position Persistence
+
+The app automatically saves and restores your viewing position across sessions.
+
+### How It Works
+
+**On Every Scroll:**
+```typescript
+// Saves current position to localStorage
+setLastVideoIndex(currentIndex, videoId);
+```
+
+**On Page Load:**
+```typescript
+// 1. Check saved position (e.g., video #45)
+const savedIndex = preferences.lastVideoIndex; // 45
+
+// 2. Load initial batch (10 videos)
+const initialVideos = await fetchVideos(limit=10);
+
+// 3. If saved position > loaded videos, load more
+while (savedIndex >= videos.length && hasMore) {
+  await loadMoreVideos(); // Fetch 25 more
+}
+
+// 4. Scroll to saved position
+scrollToVideo(savedIndex);
+```
+
+### Smart Loading Algorithm
+
+```typescript
+Saved position: 45
+Initial load: 10 videos (0-9)
+
+Check: 45 >= 10? Yes → Load more
+Batch 1: +25 videos (total: 35)
+
+Check: 45 >= 35? Yes → Load more  
+Batch 2: +25 videos (total: 60)
+
+Check: 45 >= 60? No → Stop
+✅ Restore position at #45
+```
+
+### Storage Keys
+
+```typescript
+localStorage:
+  'farcaster-feed-last-index': '45'        // Video number
+  'farcaster-feed-last-video-id': '0x...'  // Video hash
+  'farcaster-feed-mute-state': 'true'      // Mute preference
+```
+
+### Example Flow
+
+```
+📱 Session 1:
+  User watches videos 1 → 50
+  Leaves at video #45
+  → Saves: index=45, id=0xabc123
+
+📱 Session 2 (Return):
+  1. Load 10 initial videos
+  2. Check: saved=45 > loaded=10
+  3. Load batch 1 (+25) = 35 total
+  4. Check: saved=45 > loaded=35
+  5. Load batch 2 (+25) = 60 total
+  6. Check: saved=45 < loaded=60 ✅
+  7. Scroll to video #45
+  8. Resume playback 🎬
+```
+
+### Safety Features
+
+**Maximum Attempts**: 10 batches (250 videos)
+```typescript
+const maxAttempts = 10;
+if (attempts >= maxAttempts) {
+  console.warn('Could not reach saved position, starting from beginning');
+  setCurrentIndex(0);
+}
+```
+
+**Fallback Behavior**:
+- If saved position unreachable → Start from beginning
+- If videos changed → Start from beginning
+- If API error → Start from beginning
+
+### Console Output
+
+```
+📍 Saved position at 45, but only 10 videos loaded. Loading more...
+📥 Loading batch 1 to reach saved position...
+📥 Loading batch 2 to reach saved position...
+✅ Reached saved position after 2 batches
+📍 Restoring last position: index 45
+```
+
+---
+
 **Last Updated**: October 16, 2025
 **API Version**: Neynar v2
 **Status**: ✅ Production Ready

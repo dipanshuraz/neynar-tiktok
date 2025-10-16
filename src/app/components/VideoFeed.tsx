@@ -66,21 +66,69 @@ export default function VideoFeed({
   
   // Restore last video position on mount (after videos load)
   useEffect(() => {
-    if (videos.length > 0 && preferences.lastVideoIndex > 0 && preferences.lastVideoIndex < videos.length) {
+    if (videos.length === 0 || preferences.lastVideoIndex === 0) return;
+    
+    const savedIndex = preferences.lastVideoIndex;
+    
+    // If saved position is within current videos, restore it
+    if (savedIndex < videos.length) {
       if (process.env.NODE_ENV === 'development') {
-        console.log(`📍 Restoring last position: index ${preferences.lastVideoIndex}`);
+        console.log(`📍 Restoring last position: index ${savedIndex}`);
       }
-      setCurrentIndex(preferences.lastVideoIndex);
+      setCurrentIndex(savedIndex);
       
       // Scroll to saved position
       setTimeout(() => {
-        const savedVideo = videoRefs.current.get(preferences.lastVideoIndex);
+        const savedVideo = videoRefs.current.get(savedIndex);
         if (savedVideo && containerRef.current) {
           savedVideo.scrollIntoView({ behavior: 'auto', block: 'start' });
         }
       }, 100);
+    } 
+    // If saved position is beyond current videos, load more to reach it
+    else if (savedIndex >= videos.length && hasMore && !loadingMore) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📍 Saved position at ${savedIndex}, but only ${videos.length} videos loaded. Loading more...`);
+      }
+      
+      // Load more videos to reach the saved position
+      const loadUntilSaved = async () => {
+        let attempts = 0;
+        const maxAttempts = 10; // Prevent infinite loop
+        
+        while (savedIndex >= videos.length && hasMore && attempts < maxAttempts) {
+          attempts++;
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`📥 Loading batch ${attempts} to reach saved position...`);
+          }
+          await loadMoreVideos();
+          // Wait a bit for state to update
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        // After loading, restore position
+        if (savedIndex < videos.length) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ Reached saved position after ${attempts} batches`);
+          }
+          setCurrentIndex(savedIndex);
+          setTimeout(() => {
+            const savedVideo = videoRefs.current.get(savedIndex);
+            if (savedVideo && containerRef.current) {
+              savedVideo.scrollIntoView({ behavior: 'auto', block: 'start' });
+            }
+          }, 200);
+        } else {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`⚠️ Could not reach saved position ${savedIndex} (max: ${videos.length}). Starting from beginning.`);
+          }
+          setCurrentIndex(0);
+        }
+      };
+      
+      loadUntilSaved();
     }
-  }, [videos.length, preferences.lastVideoIndex]);
+  }, [videos.length, preferences.lastVideoIndex, hasMore, loadingMore, loadMoreVideos]);
   
   // Memoize toggle functions to prevent re-renders
   const handleMuteToggle = useCallback(() => {

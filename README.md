@@ -247,6 +247,38 @@ pnpm clean            # Clean build artifacts
 
 ---
 
+## 📍 Last Position Memory
+
+The app automatically remembers where you left off:
+
+### How It Works
+
+1. **Automatic Save**: Your position is saved as you scroll
+2. **Smart Restore**: When you return, the app:
+   - Loads videos up to your last position
+   - Scrolls you back to where you were
+   - Continues playback seamlessly
+
+### Storage
+
+Saved to browser localStorage:
+- `lastVideoIndex` - Video number (e.g., 45)
+- `lastVideoId` - Video hash for verification
+- `isMuted` - Your mute preference
+
+### Example
+
+```
+Visit 1: Watch videos 1-50, leave at video #45
+Visit 2: App loads 10 initial → Loads 35 more → Scrolls to #45 ✨
+```
+
+### Clear Position
+
+To start from the beginning, clear your browser's localStorage or use incognito mode.
+
+---
+
 ## 🐛 Troubleshooting
 
 ### Videos won't play
