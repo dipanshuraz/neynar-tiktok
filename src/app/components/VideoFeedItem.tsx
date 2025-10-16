@@ -104,6 +104,9 @@ function VideoFeedItemComponent({
           shouldPreload={shouldPreload}
           networkSpeed={networkSpeed}
           shouldPlay={shouldPlay}
+          castHash={cast.hash}
+          authorUsername={cast.author.username}
+          castText={cast.text}
         />
 
         {/* TikTok-Style Overlays */}

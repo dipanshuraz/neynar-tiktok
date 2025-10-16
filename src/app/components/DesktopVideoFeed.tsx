@@ -83,6 +83,9 @@ export default function DesktopVideoFeed({
               isMuted={isMuted}
               onMuteToggle={onMuteToggle}
               className="w-full h-full"
+              castHash={cast.hash}
+              authorUsername={cast.author.username}
+              castText={cast.text}
             />
 
             {/* Video Navigation Arrows */}

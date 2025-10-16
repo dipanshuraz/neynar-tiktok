@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { ProcessedVideo } from '@/types/neynar';
-import { Play, Volume2, VolumeX, AlertCircle } from 'lucide-react';
+import { Play, Volume2, VolumeX, AlertCircle, Share2 } from 'lucide-react';
 import Hls from 'hls.js';
 import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
 import { reportVideoStartup } from '../hooks/useVideoStartupMetrics';
@@ -19,6 +19,9 @@ interface VideoPlayerProps {
   shouldPreload?: boolean; // Preload video in background for fast startup
   networkSpeed?: NetworkSpeed; // Adapt HLS settings based on network
   shouldPlay?: boolean; // External play/pause control (for keyboard shortcuts)
+  castHash?: string; // For sharing
+  authorUsername?: string; // For sharing
+  castText?: string; // For sharing
 }
 
 function VideoPlayer({ 
@@ -29,7 +32,10 @@ function VideoPlayer({
   className = '',
   shouldPreload = false,
   networkSpeed = 'medium',
-  shouldPlay = true
+  shouldPlay = true,
+  castHash,
+  authorUsername,
+  castText
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -39,6 +45,8 @@ function VideoPlayer({
   const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
   const [showPoster, setShowPoster] = useState(false);
+  const [isVerticalVideo, setIsVerticalVideo] = useState(true); // Track if video is 9:16 (vertical)
+  const [showShareToast, setShowShareToast] = useState(false); // Share feedback
   const preloadStartTimeRef = useRef<number>(0);
   const playbackStartTimeRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -47,6 +55,72 @@ function VideoPlayer({
   useComponentMemoryTracking('VideoPlayer');
 
   const currentVideo = videos?.[0];
+  
+  // Detect video aspect ratio when metadata loads
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const checkAspectRatio = () => {
+      const width = currentVideo?.width || video.videoWidth;
+      const height = currentVideo?.height || video.videoHeight;
+      
+      if (width && height) {
+        const aspectRatio = width / height;
+        // 9:16 aspect ratio is 0.5625. Allow some tolerance (0.5 to 0.6)
+        // This catches 9:16, but not 16:9 (1.777) or square (1.0)
+        const isVertical = aspectRatio >= 0.5 && aspectRatio <= 0.6;
+        setIsVerticalVideo(isVertical);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`📐 Video aspect ratio: ${aspectRatio.toFixed(3)} (${width}x${height}) - ${isVertical ? 'Vertical (cover)' : 'Non-vertical (contain)'}`);
+        }
+      }
+    };
+
+    video.addEventListener('loadedmetadata', checkAspectRatio);
+    
+    // Check immediately if metadata already loaded
+    if (video.readyState >= 1) {
+      checkAspectRatio();
+    }
+
+    return () => {
+      video.removeEventListener('loadedmetadata', checkAspectRatio);
+    };
+  }, [currentVideo?.width, currentVideo?.height, currentVideo?.url]);
+
+  // Share handler
+  const handleShare = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!castHash || !authorUsername) return;
+    
+    const shareUrl = `https://warpcast.com/${authorUsername}/${castHash.slice(0, 10)}`;
+    const shareData = {
+      title: `Video by @${authorUsername}`,
+      text: castText || `Check out this video by @${authorUsername}`,
+      url: shareUrl,
+    };
+
+    try {
+      if (navigator.share && navigator.canShare?.(shareData)) {
+        await navigator.share(shareData);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ Shared via Web Share API');
+        }
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        setShowShareToast(true);
+        setTimeout(() => setShowShareToast(false), 2000);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ Link copied to clipboard');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to share:', error);
+    }
+  }, [castHash, authorUsername, castText]);
   
   // Retry logic with exponential backoff
   const retryVideo = useCallback(() => {
@@ -500,17 +574,39 @@ function VideoPlayer({
         willChange: isActive ? 'transform' : 'auto'
       }}
     >
-      {/* Mute Button */}
-      <button
-        onClick={handleMuteToggle}
-        className="absolute top-4 right-4 z-50 w-11 h-11 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
-      >
-        {isMuted ? (
-          <VolumeX className="w-5 h-5 text-white" />
-        ) : (
-          <Volume2 className="w-5 h-5 text-white" />
+      {/* Control Buttons - Top Right */}
+      <div className="absolute top-4 right-4 z-50 flex gap-2">
+        {/* Share Button */}
+        {castHash && authorUsername && (
+          <button
+            onClick={handleShare}
+            className="w-11 h-11 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors active:scale-95"
+            aria-label="Share video"
+          >
+            <Share2 className="w-5 h-5 text-white" />
+          </button>
         )}
-      </button>
+        
+        {/* Mute Button */}
+        <button
+          onClick={handleMuteToggle}
+          className="w-11 h-11 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors active:scale-95"
+          aria-label={isMuted ? 'Unmute' : 'Mute'}
+        >
+          {isMuted ? (
+            <VolumeX className="w-5 h-5 text-white" />
+          ) : (
+            <Volume2 className="w-5 h-5 text-white" />
+          )}
+        </button>
+      </div>
+      
+      {/* Share Toast Notification */}
+      {showShareToast && (
+        <div className="absolute top-20 right-4 z-50 bg-black/80 text-white px-4 py-2 rounded-lg text-sm animate-fade-in">
+          ✓ Link copied to clipboard
+        </div>
+      )}
 
       {/* Poster/Thumbnail - Show on error or while loading with poster */}
       {(showPoster || (isLoading && currentVideo.thumbnail)) && currentVideo.thumbnail && (
@@ -533,7 +629,7 @@ function VideoPlayer({
         playsInline
         preload="auto" // Always auto-load for instant playback
         poster={currentVideo.thumbnail} // Native poster attribute as fallback
-        className="w-full h-full object-cover cursor-pointer" // object-cover for mobile fullscreen
+        className={`w-full h-full cursor-pointer ${isVerticalVideo ? 'object-cover' : 'object-contain'}`} // object-cover for 9:16, object-contain for others
         style={{ 
           display: showPoster ? 'none' : 'block',
           transform: 'translateZ(0)', // Force GPU acceleration
