@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 import VideoFeedItemComponent from './VideoFeedItem';
 import DesktopVideoFeed from './DesktopVideoFeed';
+import PerformanceOverlay from './PerformanceOverlay';
 import { VideoFeedItem } from '@/types/neynar';
 
 interface VideoFeedResponse {
@@ -28,14 +29,31 @@ export default function VideoFeed() {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
+  
+  // Memoize toggle functions to prevent re-renders
+  const handleMuteToggle = useCallback(() => {
+    setIsMuted(prev => !prev);
+  }, []);
 
   useEffect(() => {
     const checkIsMobile = () => {
       setIsMobile(window.innerWidth < 1024);
     };
+    
     checkIsMobile();
-    window.addEventListener('resize', checkIsMobile);
-    return () => window.removeEventListener('resize', checkIsMobile);
+    
+    // Debounce resize for better performance
+    let resizeTimeout: NodeJS.Timeout;
+    const debouncedResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(checkIsMobile, 150);
+    };
+    
+    window.addEventListener('resize', debouncedResize, { passive: true });
+    return () => {
+      window.removeEventListener('resize', debouncedResize);
+      clearTimeout(resizeTimeout);
+    };
   }, []);
 
   const fetchVideos = useCallback(async (cursor?: string): Promise<VideoFeedResponse> => {
@@ -86,7 +104,7 @@ export default function VideoFeed() {
     }
   }, [fetchVideos, hasMore, loadingMore, nextCursor]);
 
-  // Intersection observer
+  // Intersection observer - optimized for performance
   useEffect(() => {
     if (!isMobile || !containerRef.current || videos.length === 0) return;
 
@@ -94,21 +112,26 @@ export default function VideoFeed() {
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
-            const index = parseInt(entry.target.getAttribute('data-index') || '0');
-            console.log(`👁️ Video ${index + 1} is active`);
-            setCurrentIndex(index);
-            
-            if (index >= videos.length - 2 && hasMore && !loadingMore) {
-              loadMoreVideos();
+        // Use requestAnimationFrame to batch updates
+        requestAnimationFrame(() => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+              const index = parseInt(entry.target.getAttribute('data-index') || '0');
+              console.log(`👁️ Video ${index + 1} is active`);
+              setCurrentIndex(index);
+              
+              if (index >= videos.length - 2 && hasMore && !loadingMore) {
+                loadMoreVideos();
+              }
             }
-          }
+          });
         });
       },
       {
         root: container,
         threshold: 0.5,
+        // Add rootMargin to preload adjacent videos
+        rootMargin: '100% 0px',
       }
     );
 
@@ -125,7 +148,7 @@ export default function VideoFeed() {
     };
   }, [isMobile, videos.length, hasMore, loadingMore, loadMoreVideos]);
 
-  // Keyboard navigation
+  // Keyboard navigation with passive listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'ArrowUp' && currentIndex > 0) {
@@ -140,9 +163,25 @@ export default function VideoFeed() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentIndex, videos.length, isMuted]);
+
+  // Optimize scroll performance with passive listeners
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !isMobile) return;
+
+    const handleScroll = () => {
+      // Use requestAnimationFrame to batch scroll updates
+      requestAnimationFrame(() => {
+        // Scroll handling is done by IntersectionObserver
+      });
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [isMobile]);
 
   useEffect(() => {
     loadInitialVideos();
@@ -191,32 +230,48 @@ export default function VideoFeed() {
         <div 
           ref={containerRef}
           className="h-screen overflow-y-auto snap-y snap-mandatory"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          style={{ 
+            scrollbarWidth: 'none', 
+            msOverflowStyle: 'none',
+            willChange: 'scroll-position'
+          }}
         >
           <style jsx>{`
             div::-webkit-scrollbar { display: none; }
           `}</style>
           
-          {/* SIMPLE: Just render ALL videos, no fancy virtual scrolling */}
-          {videos.map((video, index) => (
-            <div
-              key={video.id}
-              ref={(el) => {
-                if (el) videoRefs.current.set(index, el);
-                else videoRefs.current.delete(index);
-              }}
-              data-index={index}
-              className="h-screen w-full snap-start snap-always"
-            >
-              <VideoFeedItemComponent
-                item={video}
-                isActive={index === currentIndex}
-                isMuted={isMuted}
-                onMuteToggle={() => setIsMuted(!isMuted)}
-                isMobile={true}
-              />
-            </div>
-          ))}
+          {/* Virtual scrolling: Only render visible videos */}
+          {videos.map((video, index) => {
+            const isInRange = Math.abs(index - currentIndex) <= 1;
+            
+            return (
+              <div
+                key={video.id}
+                ref={(el) => {
+                  if (el) videoRefs.current.set(index, el);
+                  else videoRefs.current.delete(index);
+                }}
+                data-index={index}
+                className="h-screen w-full snap-start snap-always"
+                style={{
+                  contain: 'layout style paint',
+                  contentVisibility: isInRange ? 'visible' : 'auto'
+                }}
+              >
+                {isInRange ? (
+                  <VideoFeedItemComponent
+                    item={video}
+                    isActive={index === currentIndex}
+                    isMuted={isMuted}
+                    onMuteToggle={handleMuteToggle}
+                    isMobile={true}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-900" />
+                )}
+              </div>
+            );
+          })}
           
           {loadingMore && (
             <div className="h-20 flex items-center justify-center">
@@ -231,12 +286,15 @@ export default function VideoFeed() {
           videos={videos}
           currentIndex={currentIndex}
           isMuted={isMuted}
-          onMuteToggle={() => setIsMuted(!isMuted)}
+          onMuteToggle={handleMuteToggle}
           onNext={() => setCurrentIndex(Math.min(currentIndex + 1, videos.length - 1))}
           onPrevious={() => setCurrentIndex(Math.max(currentIndex - 1, 0))}
         />
       )}
 
+      {/* Performance Overlay in Development */}
+      <PerformanceOverlay />
+      
       {process.env.NODE_ENV === 'development' && (
         <div className="fixed top-4 right-4 z-50 bg-black/70 rounded px-3 py-2 text-xs text-white">
           <div>Video: {currentIndex + 1} / {videos.length}</div>

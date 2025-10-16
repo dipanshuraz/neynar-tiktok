@@ -1,8 +1,8 @@
-// src/components/VideoPlayer.tsx - FIXED VERSION
+// src/components/VideoPlayer.tsx - PERFORMANCE OPTIMIZED
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { ProcessedVideo } from '@/types/neynar';
 import { Play, Volume2, VolumeX, AlertCircle } from 'lucide-react';
 import Hls from 'hls.js';
@@ -15,7 +15,7 @@ interface VideoPlayerProps {
   className?: string;
 }
 
-export default function VideoPlayer({ 
+function VideoPlayer({ 
   videos, 
   isActive, 
   isMuted, 
@@ -31,12 +31,13 @@ export default function VideoPlayer({
 
   const currentVideo = videos?.[0];
 
-  // Setup HLS - SIMPLIFIED, no isMounted check
+  // Setup HLS - Only load when active or about to be active
   useEffect(() => {
-    if (!videoRef.current || !currentVideo?.url) {
-      console.log('⏳ Waiting for video element...', { 
+    if (!videoRef.current || !currentVideo?.url || !isActive) {
+      console.log('⏳ Waiting for video element or not active...', { 
         hasRef: !!videoRef.current, 
-        hasUrl: !!currentVideo?.url 
+        hasUrl: !!currentVideo?.url,
+        isActive 
       });
       return;
     }
@@ -74,10 +75,12 @@ export default function VideoPlayer({
 
     console.log('✅ Creating HLS.js instance');
     const hls = new Hls({
-      debug: true,
+      debug: false, // Disable debug in production for performance
       enableWorker: true,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
+      maxBufferLength: 10, // Reduce buffer for faster startup
+      maxMaxBufferLength: 30, // Reduce max buffer
+      lowLatencyMode: true,
+      backBufferLength: 0, // Don't keep old segments
     });
 
     hlsRef.current = hls;
@@ -111,7 +114,7 @@ export default function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [currentVideo?.url]); // Only depend on URL change
+  }, [currentVideo?.url, isActive]); // Depend on URL and isActive
 
   // Playback control
   useEffect(() => {
@@ -203,14 +206,29 @@ export default function VideoPlayer({
     );
   }
 
+  const handleVideoClick = useCallback(() => {
+    if (videoRef.current) {
+      if (isPlaying) videoRef.current.pause();
+      else videoRef.current.play();
+    }
+  }, [isPlaying]);
+
+  const handleMuteToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onMuteToggle();
+  }, [onMuteToggle]);
+
   return (
-    <div className={`relative bg-black ${className}`}>
+    <div 
+      className={`relative bg-black ${className}`}
+      style={{ 
+        contain: 'layout style paint',
+        willChange: isActive ? 'transform' : 'auto'
+      }}
+    >
       {/* Mute Button */}
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onMuteToggle();
-        }}
+        onClick={handleMuteToggle}
         className="absolute top-4 right-4 z-50 w-11 h-11 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
       >
         {isMuted ? (
@@ -226,15 +244,15 @@ export default function VideoPlayer({
         loop
         muted={isMuted}
         playsInline
-        preload="auto"
+        preload="metadata" // Changed from 'auto' to 'metadata' for better performance
         className="w-full h-full object-cover cursor-pointer"
-        style={{ display: isLoading ? 'none' : 'block' }}
-        onClick={() => {
-          if (videoRef.current) {
-            if (isPlaying) videoRef.current.pause();
-            else videoRef.current.play();
-          }
+        style={{ 
+          display: isLoading ? 'none' : 'block',
+          transform: 'translateZ(0)', // Force GPU acceleration
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden'
         }}
+        onClick={handleVideoClick}
       />
       
       {/* Loading Overlay */}
@@ -260,3 +278,12 @@ export default function VideoPlayer({
     </div>
   );
 }
+
+// Memoize VideoPlayer to prevent re-renders when props haven't changed
+export default memo(VideoPlayer, (prevProps, nextProps) => {
+  return (
+    prevProps.videos[0]?.url === nextProps.videos[0]?.url &&
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.isMuted === nextProps.isMuted
+  );
+});

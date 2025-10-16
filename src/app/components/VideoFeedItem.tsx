@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, memo, useCallback } from 'react';
 import { Heart, MessageCircle, Share, Plus } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import { VideoFeedItem } from '@/types/neynar';
@@ -15,7 +15,7 @@ interface VideoFeedItemProps {
   isMobile?: boolean;
 }
 
-export default function VideoFeedItemComponent({ 
+function VideoFeedItemComponent({ 
   item, 
   isActive,
   isMuted,
@@ -48,12 +48,12 @@ export default function VideoFeedItemComponent({
     return `${Math.max(1, diffMinutes)}m`;
   };
 
-  const handleLike = (e: React.MouseEvent) => {
+  const handleLike = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setIsLiked(!isLiked);
-  };
+  }, [isLiked]);
 
-  const handleShare = (e: React.MouseEvent) => {
+  const handleShare = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     const shareData = {
       title: `Video by @${cast.author.username}`,
@@ -66,23 +66,29 @@ export default function VideoFeedItemComponent({
     } else {
       navigator.clipboard.writeText(shareData.url);
     }
-  };
+  }, [cast.author.username, cast.text, cast.hash]);
 
-  const handleComment = (e: React.MouseEvent) => {
+  const handleComment = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     // Open Warpcast to comment
     const warpcastUrl = `https://warpcast.com/${cast.author.username}/${cast.hash.slice(0, 10)}`;
     window.open(warpcastUrl, '_blank');
-  };
+  }, [cast.author.username, cast.hash]);
 
-  const handleFollow = (e: React.MouseEvent) => {
+  const handleFollow = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setIsFollowing(!isFollowing);
-  };
+  }, [isFollowing]);
 
   if (isMobile) {
     return (
-      <div className="relative w-full h-screen bg-black">
+      <div 
+        className="relative w-full h-screen bg-black"
+        style={{ 
+          willChange: isActive ? 'transform' : 'auto',
+          contain: 'layout style paint'
+        }}
+      >
         {/* Video Player - Full Screen */}
         <VideoPlayer
           videos={videos}
@@ -253,3 +259,13 @@ export default function VideoFeedItemComponent({
     </div>
   );
 }
+
+// Memoize component to prevent unnecessary re-renders
+export default memo(VideoFeedItemComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.isMuted === nextProps.isMuted &&
+    prevProps.isMobile === nextProps.isMobile
+  );
+});

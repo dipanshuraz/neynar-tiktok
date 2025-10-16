@@ -1,0 +1,181 @@
+// src/components/PerformanceOverlay.tsx - FPS Monitor for Development
+
+'use client';
+
+import { useEffect, useState, useRef } from 'react';
+
+interface PerformanceStats {
+  fps: number;
+  avgFps: number;
+  minFps: number;
+  droppedFrames: number;
+  memoryUsage?: string;
+}
+
+export default function PerformanceOverlay() {
+  const [stats, setStats] = useState<PerformanceStats>({
+    fps: 60,
+    avgFps: 60,
+    minFps: 60,
+    droppedFrames: 0,
+  });
+  const [isVisible, setIsVisible] = useState(true);
+  const fpsHistoryRef = useRef<number[]>([]);
+  const frameCountRef = useRef(0);
+  const lastTimeRef = useRef(performance.now());
+  const rafIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let minFps = 60;
+    let droppedFrames = 0;
+
+    const measureFPS = () => {
+      const now = performance.now();
+      frameCountRef.current++;
+
+      if (now >= lastTimeRef.current + 1000) {
+        const fps = Math.round(
+          (frameCountRef.current * 1000) / (now - lastTimeRef.current)
+        );
+        
+        // Track FPS history
+        fpsHistoryRef.current.push(fps);
+        if (fpsHistoryRef.current.length > 30) {
+          fpsHistoryRef.current.shift();
+        }
+
+        // Calculate stats
+        const avgFps = Math.round(
+          fpsHistoryRef.current.reduce((a, b) => a + b, 0) / 
+          fpsHistoryRef.current.length
+        );
+        
+        if (fps < minFps) minFps = fps;
+        if (fps < 58) droppedFrames++;
+
+        // Get memory usage if available
+        let memoryUsage: string | undefined;
+        if ('memory' in performance) {
+          const memory = (performance as any).memory;
+          const usedMB = (memory.usedJSHeapSize / 1024 / 1024).toFixed(1);
+          const totalMB = (memory.jsHeapSizeLimit / 1024 / 1024).toFixed(1);
+          memoryUsage = `${usedMB} / ${totalMB} MB`;
+        }
+
+        setStats({
+          fps,
+          avgFps,
+          minFps,
+          droppedFrames,
+          memoryUsage,
+        });
+
+        frameCountRef.current = 0;
+        lastTimeRef.current = now;
+      }
+
+      rafIdRef.current = requestAnimationFrame(measureFPS);
+    };
+
+    rafIdRef.current = requestAnimationFrame(measureFPS);
+
+    // Keyboard shortcut to toggle visibility (Shift + P)
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'P' && e.shiftKey) {
+        setIsVisible(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+      window.removeEventListener('keydown', handleKeyPress);
+    };
+  }, []);
+
+  if (!isVisible || process.env.NODE_ENV !== 'development') {
+    return null;
+  }
+
+  const getFpsColor = (fps: number) => {
+    if (fps >= 58) return 'text-green-400';
+    if (fps >= 45) return 'text-yellow-400';
+    return 'text-red-400';
+  };
+
+  return (
+    <div className="fixed top-20 right-4 z-[9999] bg-black/90 backdrop-blur-md rounded-lg p-3 text-xs font-mono border border-white/20 shadow-xl">
+      <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10">
+        <span className="text-white/60 font-semibold">Performance</span>
+        <button
+          onClick={() => setIsVisible(false)}
+          className="text-white/40 hover:text-white/80 transition-colors text-xs"
+        >
+          ✕
+        </button>
+      </div>
+      
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-white/60">FPS:</span>
+          <span className={`font-bold ${getFpsColor(stats.fps)}`}>
+            {stats.fps}
+          </span>
+        </div>
+        
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-white/60">Avg FPS:</span>
+          <span className={`font-bold ${getFpsColor(stats.avgFps)}`}>
+            {stats.avgFps}
+          </span>
+        </div>
+        
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-white/60">Min FPS:</span>
+          <span className={`font-bold ${getFpsColor(stats.minFps)}`}>
+            {stats.minFps}
+          </span>
+        </div>
+        
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-white/60">Dropped:</span>
+          <span className={`font-bold ${stats.droppedFrames > 0 ? 'text-red-400' : 'text-green-400'}`}>
+            {stats.droppedFrames}
+          </span>
+        </div>
+        
+        {stats.memoryUsage && (
+          <>
+            <div className="h-px bg-white/10 my-2" />
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-white/60">Memory:</span>
+              <span className="text-white text-[10px]">
+                {stats.memoryUsage}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+      
+      {/* FPS Bar */}
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-all duration-300 ${
+              stats.fps >= 58 ? 'bg-green-400' :
+              stats.fps >= 45 ? 'bg-yellow-400' : 'bg-red-400'
+            }`}
+            style={{ width: `${(stats.fps / 60) * 100}%` }}
+          />
+        </div>
+        <div className="text-[9px] text-white/40 mt-1.5 text-center">
+          Shift + P to toggle
+        </div>
+      </div>
+    </div>
+  );
+}
+
