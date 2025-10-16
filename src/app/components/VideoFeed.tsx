@@ -33,7 +33,7 @@ export default function VideoFeed({
   initialHasMore = true 
 }: VideoFeedProps) {
   // Playback preferences (mute state, last position)
-  const { preferences, setMuted, setLastVideoIndex } = usePlaybackPreferences();
+  const { preferences, isLoaded: preferencesLoaded, setMuted, setLastVideoIndex } = usePlaybackPreferences();
   
   const [videos, setVideos] = useState<VideoFeedItem[]>(initialVideos);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -145,17 +145,8 @@ export default function VideoFeed({
     // Check if we have a saved position with cursor
     const hasSavedPosition = preferences.lastVideoIndex > 0 && preferences.lastCursor;
     
-    // Skip if we already have SSR data and no saved position
-    if (initialVideos.length > 0 && !hasSavedPosition) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Using ${initialVideos.length} SSR videos (no fetch needed)`);
-      }
-      setLoading(false);
-      return;
-    }
-
-    // If we have a saved position with cursor, fetch from that cursor
-    if (hasSavedPosition && initialVideos.length === 0) {
+    // If we have a saved position with cursor, fetch from that cursor (always prioritize restoration)
+    if (hasSavedPosition) {
       if (process.env.NODE_ENV === 'development') {
         console.log(`📍 Restoring from saved cursor: ${preferences.lastCursor!.substring(0, 20)}...`);
       }
@@ -166,8 +157,16 @@ export default function VideoFeed({
         const data = await fetchVideos(preferences.lastCursor!);
         
         if (!data.videos || data.videos.length === 0) {
-          setError('No videos found');
-          return;
+          // Cursor might be expired, fall back to SSR data or fetch from beginning
+          if (initialVideos.length > 0) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('⚠️ Cursor expired, using SSR videos');
+            }
+            setLoading(false);
+            setRestoringPosition(false);
+            return;
+          }
+          throw new Error('No videos found with saved cursor');
         }
         
         console.log(`✅ Loaded ${data.videos.length} videos from saved cursor`);
@@ -177,7 +176,16 @@ export default function VideoFeed({
         // Will restore index in separate effect
       } catch (err) {
         console.error('Failed to restore from cursor, loading from beginning:', err);
-        // Fall back to loading from beginning
+        // Fall back to SSR data or fetch from beginning
+        if (initialVideos.length > 0) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('⚠️ Using SSR videos as fallback');
+          }
+          setLoading(false);
+          setRestoringPosition(false);
+          return;
+        }
+        
         try {
           const data = await fetchVideos();
           setVideos(data.videos);
@@ -190,6 +198,15 @@ export default function VideoFeed({
         setLoading(false);
         setRestoringPosition(false);
       }
+      return;
+    }
+    
+    // No saved position - use SSR data if available
+    if (initialVideos.length > 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ Using ${initialVideos.length} SSR videos (no fetch needed)`);
+      }
+      setLoading(false);
       return;
     }
 
@@ -378,8 +395,16 @@ export default function VideoFeed({
   }, [isMobile]);
 
   useEffect(() => {
+    // Wait for preferences to load before deciding what to fetch
+    if (!preferencesLoaded) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏳ Waiting for preferences to load...');
+      }
+      return;
+    }
+    
     loadInitialVideos();
-  }, [loadInitialVideos]);
+  }, [loadInitialVideos, preferencesLoaded]);
 
   // Ensure first video is active on mount (mobile only)
   // This runs once when videos first load to trigger autoplay

@@ -25,6 +25,7 @@ interface PlaybackPreferences {
 
 interface UsePlaybackPreferencesReturn {
   preferences: PlaybackPreferences;
+  isLoaded: boolean; // True when preferences have been loaded from storage
   setMuted: (muted: boolean) => void;
   setLastVideoIndex: (index: number, videoId?: string, cursor?: string) => void;
   setPlaybackSpeed: (speed: number) => void;
@@ -47,6 +48,7 @@ const DEFAULT_PREFERENCES: PlaybackPreferences = {
 export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
   const [preferences, setPreferences] = useState<PlaybackPreferences>(DEFAULT_PREFERENCES);
   const [isClient, setIsClient] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -81,8 +83,11 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
         if (process.env.NODE_ENV === 'development') {
           console.log('📼 Loaded playback preferences from', storage.isUsingIndexedDB() ? 'IndexedDB' : 'localStorage', stored);
         }
+        
+        setIsLoaded(true); // Mark as loaded
       } catch (error) {
         console.error('Failed to load playback preferences:', error);
+        setIsLoaded(true); // Mark as loaded even on error
       }
     };
 
@@ -182,6 +187,7 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
 
   return {
     preferences,
+    isLoaded,
     setMuted,
     setLastVideoIndex,
     setPlaybackSpeed,
