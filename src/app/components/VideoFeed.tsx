@@ -45,6 +45,7 @@ export default function VideoFeed({
   const [isMuted, setIsMuted] = useState(preferences.isMuted); // Initialize from preferences
   const [isMobile, setIsMobile] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true); // Track play/pause state
+  const [restoringPosition, setRestoringPosition] = useState(false); // Track if restoring saved position
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -70,65 +71,32 @@ export default function VideoFeed({
     
     const savedIndex = preferences.lastVideoIndex;
     
-    // If saved position is within current videos, restore it
-    if (savedIndex < videos.length) {
+    // Calculate local index within current batch
+    // Since we load 25 videos per batch, the local index is savedIndex % 25
+    const localIndex = savedIndex % 25;
+    
+    // If we have the video at that local position, restore it
+    if (localIndex < videos.length) {
       if (process.env.NODE_ENV === 'development') {
-        console.log(`📍 Restoring last position: index ${savedIndex}`);
+        console.log(`📍 Restoring to local position ${localIndex} (original: ${savedIndex})`);
       }
-      setCurrentIndex(savedIndex);
+      setCurrentIndex(localIndex);
       
       // Scroll to saved position
       setTimeout(() => {
-        const savedVideo = videoRefs.current.get(savedIndex);
+        const savedVideo = videoRefs.current.get(localIndex);
         if (savedVideo && containerRef.current) {
           savedVideo.scrollIntoView({ behavior: 'auto', block: 'start' });
         }
       }, 100);
-    } 
-    // If saved position is beyond current videos, load more to reach it
-    else if (savedIndex >= videos.length && hasMore && !loadingMore) {
+    } else {
+      // Just start from beginning of current batch
       if (process.env.NODE_ENV === 'development') {
-        console.log(`📍 Saved position at ${savedIndex}, but only ${videos.length} videos loaded. Loading more...`);
+        console.log(`⚠️ Could not restore to local position ${localIndex}, starting from 0`);
       }
-      
-      // Load more videos to reach the saved position
-      const loadUntilSaved = async () => {
-        let attempts = 0;
-        const maxAttempts = 10; // Prevent infinite loop
-        
-        while (savedIndex >= videos.length && hasMore && attempts < maxAttempts) {
-          attempts++;
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`📥 Loading batch ${attempts} to reach saved position...`);
-          }
-          await loadMoreVideos();
-          // Wait a bit for state to update
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-        
-        // After loading, restore position
-        if (savedIndex < videos.length) {
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`✅ Reached saved position after ${attempts} batches`);
-          }
-          setCurrentIndex(savedIndex);
-          setTimeout(() => {
-            const savedVideo = videoRefs.current.get(savedIndex);
-            if (savedVideo && containerRef.current) {
-              savedVideo.scrollIntoView({ behavior: 'auto', block: 'start' });
-            }
-          }, 200);
-        } else {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn(`⚠️ Could not reach saved position ${savedIndex} (max: ${videos.length}). Starting from beginning.`);
-          }
-          setCurrentIndex(0);
-        }
-      };
-      
-      loadUntilSaved();
+      setCurrentIndex(0);
     }
-  }, [videos.length, preferences.lastVideoIndex, hasMore, loadingMore, loadMoreVideos]);
+  }, [videos.length, preferences.lastVideoIndex]);
   
   // Memoize toggle functions to prevent re-renders
   const handleMuteToggle = useCallback(() => {
@@ -174,8 +142,11 @@ export default function VideoFeed({
   }, []);
 
   const loadInitialVideos = useCallback(async () => {
-    // Skip if we already have SSR data
-    if (initialVideos.length > 0) {
+    // Check if we have a saved position with cursor
+    const hasSavedPosition = preferences.lastVideoIndex > 0 && preferences.lastCursor;
+    
+    // Skip if we already have SSR data and no saved position
+    if (initialVideos.length > 0 && !hasSavedPosition) {
       if (process.env.NODE_ENV === 'development') {
         console.log(`✅ Using ${initialVideos.length} SSR videos (no fetch needed)`);
       }
@@ -183,13 +154,52 @@ export default function VideoFeed({
       return;
     }
 
-    // Otherwise fetch client-side
+    // If we have a saved position with cursor, fetch from that cursor
+    if (hasSavedPosition && initialVideos.length === 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📍 Restoring from saved cursor: ${preferences.lastCursor!.substring(0, 20)}...`);
+      }
+      
+      try {
+        setLoading(true);
+        setRestoringPosition(true);
+        const data = await fetchVideos(preferences.lastCursor!);
+        
+        if (!data.videos || data.videos.length === 0) {
+          setError('No videos found');
+          return;
+        }
+        
+        console.log(`✅ Loaded ${data.videos.length} videos from saved cursor`);
+        setVideos(data.videos);
+        setNextCursor(data.nextCursor);
+        setHasMore(data.hasMore);
+        // Will restore index in separate effect
+      } catch (err) {
+        console.error('Failed to restore from cursor, loading from beginning:', err);
+        // Fall back to loading from beginning
+        try {
+          const data = await fetchVideos();
+          setVideos(data.videos);
+          setNextCursor(data.nextCursor);
+          setHasMore(data.hasMore);
+        } catch (fallbackErr) {
+          setError(fallbackErr instanceof Error ? fallbackErr.message : 'Failed to load');
+        }
+      } finally {
+        setLoading(false);
+        setRestoringPosition(false);
+      }
+      return;
+    }
+
+    // Otherwise fetch client-side from beginning
     try {
       setLoading(true);
       const data = await fetchVideos();
       
       if (!data.videos || data.videos.length === 0) {
-        setError('No HLS videos found');
+        setError('No videos found');
         return;
       }
       
@@ -203,7 +213,7 @@ export default function VideoFeed({
     } finally {
       setLoading(false);
     }
-  }, [fetchVideos, initialVideos.length]);
+  }, [fetchVideos, initialVideos.length, preferences.lastVideoIndex, preferences.lastCursor]);
 
   const loadMoreVideos = useCallback(async () => {
     if (!hasMore || loadingMore || !nextCursor) {
@@ -284,7 +294,8 @@ export default function VideoFeed({
             setCurrentIndex(mostVisible.index);
             
             const videoId = videos[mostVisible.index]?.id;
-            setLastVideoIndex(mostVisible.index, videoId);
+            // Save position with current cursor for efficient restoration
+            setLastVideoIndex(mostVisible.index, videoId, nextCursor);
             
             // Load more videos when user is 5 videos from the end for smooth experience
             if (mostVisible.index >= videos.length - 5 && hasMore && !loadingMore) {

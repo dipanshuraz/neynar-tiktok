@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   MUTE_STATE: 'farcaster-feed-mute-state',
   LAST_VIDEO_INDEX: 'farcaster-feed-last-index',
   LAST_VIDEO_ID: 'farcaster-feed-last-video-id',
+  LAST_CURSOR: 'farcaster-feed-last-cursor',
   PLAYBACK_SPEED: 'farcaster-feed-playback-speed',
   VOLUME: 'farcaster-feed-volume',
 } as const;
@@ -16,6 +17,7 @@ interface PlaybackPreferences {
   isMuted: boolean;
   lastVideoIndex: number;
   lastVideoId: string | null;
+  lastCursor: string | null;
   playbackSpeed: number;
   volume: number;
 }
@@ -23,7 +25,7 @@ interface PlaybackPreferences {
 interface UsePlaybackPreferencesReturn {
   preferences: PlaybackPreferences;
   setMuted: (muted: boolean) => void;
-  setLastVideoIndex: (index: number, videoId?: string) => void;
+  setLastVideoIndex: (index: number, videoId?: string, cursor?: string) => void;
   setPlaybackSpeed: (speed: number) => void;
   setVolume: (volume: number) => void;
   clearPreferences: () => void;
@@ -33,6 +35,7 @@ const DEFAULT_PREFERENCES: PlaybackPreferences = {
   isMuted: true, // Default to muted (autoplay requirement)
   lastVideoIndex: 0,
   lastVideoId: null,
+  lastCursor: null,
   playbackSpeed: 1.0,
   volume: 0.8, // 80% volume when unmuted
 };
@@ -54,6 +57,7 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
         isMuted: localStorage.getItem(STORAGE_KEYS.MUTE_STATE) === 'true',
         lastVideoIndex: parseInt(localStorage.getItem(STORAGE_KEYS.LAST_VIDEO_INDEX) || '0', 10),
         lastVideoId: localStorage.getItem(STORAGE_KEYS.LAST_VIDEO_ID),
+        lastCursor: localStorage.getItem(STORAGE_KEYS.LAST_CURSOR),
         playbackSpeed: parseFloat(localStorage.getItem(STORAGE_KEYS.PLAYBACK_SPEED) || '1.0'),
         volume: parseFloat(localStorage.getItem(STORAGE_KEYS.VOLUME) || '0.8'),
       };
@@ -86,7 +90,7 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
     }
   }, [isClient]);
 
-  const setLastVideoIndex = useCallback((index: number, videoId?: string) => {
+  const setLastVideoIndex = useCallback((index: number, videoId?: string, cursor?: string) => {
     if (!isClient) return;
     
     try {
@@ -94,15 +98,19 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
       if (videoId) {
         localStorage.setItem(STORAGE_KEYS.LAST_VIDEO_ID, videoId);
       }
+      if (cursor) {
+        localStorage.setItem(STORAGE_KEYS.LAST_CURSOR, cursor);
+      }
       
       setPreferences(prev => ({
         ...prev,
         lastVideoIndex: index,
         lastVideoId: videoId || prev.lastVideoId,
+        lastCursor: cursor || prev.lastCursor,
       }));
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`📍 Last position saved: index ${index}${videoId ? `, id ${videoId}` : ''}`);
+        console.log(`📍 Last position saved: index ${index}${videoId ? `, id ${videoId.substring(0, 10)}...` : ''}${cursor ? `, cursor ${cursor.substring(0, 10)}...` : ''}`);
       }
     } catch (error) {
       console.error('Failed to save last video position:', error);

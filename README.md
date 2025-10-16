@@ -249,33 +249,48 @@ pnpm clean            # Clean build artifacts
 
 ## 📍 Last Position Memory
 
-The app automatically remembers where you left off:
+The app automatically remembers where you left off using **cursor-based restoration**:
 
 ### How It Works
 
-1. **Automatic Save**: Your position is saved as you scroll
-2. **Smart Restore**: When you return, the app:
-   - Loads videos up to your last position
-   - Scrolls you back to where you were
-   - Continues playback seamlessly
+1. **Automatic Save**: As you scroll, saves:
+   - Your video position (e.g., #45)
+   - The API cursor for that batch
+   - Your mute preference
+
+2. **Smart Restore**: When you return:
+   - Uses saved cursor to fetch the exact batch of videos
+   - Restores your position within that batch
+   - **Only 1 API call** instead of multiple!
 
 ### Storage
 
 Saved to browser localStorage:
-- `lastVideoIndex` - Video number (e.g., 45)
+- `lastVideoIndex` - Global video number (e.g., 45)
+- `lastCursor` - API cursor to fetch that batch
 - `lastVideoId` - Video hash for verification
 - `isMuted` - Your mute preference
 
 ### Example
 
 ```
-Visit 1: Watch videos 1-50, leave at video #45
-Visit 2: App loads 10 initial → Loads 35 more → Scrolls to #45 ✨
+Visit 1: 
+  Watch videos 1-50 (batch 1 + batch 2)
+  Leave at video #45 (local position 20 in batch 2)
+  Saves: index=45, cursor=<batch2_cursor>
+
+Visit 2:
+  Fetch with saved cursor → Get batch 2 (videos 26-50)
+  Restore to local position 20 → Video #45 ✨
+  Only 1 API call!
 ```
 
 ### Clear Position
 
-To start from the beginning, clear your browser's localStorage or use incognito mode.
+To start from the beginning:
+- Clear browser localStorage, or
+- Use incognito mode, or
+- Different browser/device
 
 ---
 
