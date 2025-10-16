@@ -1,4 +1,4 @@
-# 🎬 Farcaster Video Feed
+# 🎬 Farcaster Video Feed - Tik tok
 
 A high-performance, TikTok-style vertical video feed for [Farcaster](https://www.farcaster.xyz/) content, powered by [Neynar API](https://neynar.com/). Built with Next.js 14, React 18, and optimized for 60 FPS scrolling on both mobile and desktop.
 
