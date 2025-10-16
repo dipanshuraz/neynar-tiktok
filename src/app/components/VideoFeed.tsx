@@ -585,11 +585,14 @@ export default function VideoFeed({
       {isMobile && (
         <div 
           ref={containerRef}
-          className="h-screen overflow-y-auto snap-y snap-mandatory"
+          className="h-screen overflow-y-auto snap-y snap-proximity"
           style={{ 
             scrollbarWidth: 'none', 
             msOverflowStyle: 'none',
-            willChange: 'scroll-position'
+            willChange: 'scroll-position',
+            WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
+            transform: 'translateZ(0)', // Hardware acceleration
+            scrollSnapStop: 'normal', // Allow smooth swiping through multiple videos
           }}
         >
           <style jsx>{`
@@ -599,9 +602,10 @@ export default function VideoFeed({
           {/* Virtual scrolling: Keep only 3-5 video DOM nodes mounted */}
           {videos.map((video, index) => {
             const isInRange = Math.abs(index - currentIndex) <= 2; // Keep 2 before/after = 5 videos max (current + 2 before + 2 after)
-            // Ultra-aggressive preloading: load next 3 videos immediately
+            // Mobile-optimized preloading: only next 1 video to avoid memory issues
             const distanceFromCurrent = index - currentIndex;
-            const shouldPreload = distanceFromCurrent >= 0 && distanceFromCurrent <= 3; // Preload current + next 3
+            const preloadDistance = isMobile ? 1 : 2; // Mobile: 1, Desktop: 2
+            const shouldPreload = distanceFromCurrent >= 0 && distanceFromCurrent <= preloadDistance;
             
             // Use SSR component for first video until hydration completes
             const isFirstVideo = index === 0 && initialVideos.length > 0;
@@ -618,7 +622,11 @@ export default function VideoFeed({
                 className="h-screen w-full snap-start snap-always"
                 style={{
                   contain: 'layout style paint',
-                  contentVisibility: isInRange ? 'visible' : 'auto'
+                  contentVisibility: isInRange ? 'visible' : 'auto',
+                  // Smooth rendering on mobile
+                  willChange: isInRange ? 'transform' : 'auto',
+                  backfaceVisibility: 'hidden',
+                  transform: 'translate3d(0,0,0)', // Force GPU acceleration
                 }}
               >
                 {isInRange ? (

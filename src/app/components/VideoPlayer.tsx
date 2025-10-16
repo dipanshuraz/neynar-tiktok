@@ -65,7 +65,7 @@ function VideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPlayButton, setShowPlayButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!isActive); // Start optimistic for active video
   const [retryCount, setRetryCount] = useState(0);
   const [showPoster, setShowPoster] = useState(false);
   const [isVerticalVideo, setIsVerticalVideo] = useState(true); // Track if video is 9:16 (vertical)
@@ -198,7 +198,15 @@ function VideoPlayer({
       console.log(`${status} loading ${videoType.toUpperCase()}:`, videoUrl.substring(0, 50) + '...');
     }
     
-    setIsLoading(true);
+    // Only show loading spinner after a delay for active videos (avoid flicker)
+    if (isActive) {
+      const loadingTimer = setTimeout(() => setIsLoading(true), 300);
+      const cleanup = () => clearTimeout(loadingTimer);
+      video.addEventListener('canplay', cleanup, { once: true });
+      video.addEventListener('error', cleanup, { once: true });
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
 
     // Clean up previous HLS instance only if URL is changing
