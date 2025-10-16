@@ -56,6 +56,12 @@ function VideoPlayer({
 
   const currentVideo = videos?.[0];
   
+  // Reset vertical state when video URL changes
+  useEffect(() => {
+    // Reset to true (assume vertical) when URL changes, will update after metadata loads
+    setIsVerticalVideo(true);
+  }, [currentVideo?.url]);
+  
   // Detect video aspect ratio when metadata loads
   useEffect(() => {
     const video = videoRef.current;
@@ -346,15 +352,23 @@ function VideoPlayer({
       }
       
       if (hlsRef.current) {
-        // Proper cleanup to prevent memory leaks
-        hlsRef.current.detachMedia();
-        hlsRef.current.destroy();
+        // Proper cleanup to prevent memory leaks and audio glitches
+        try {
+          hlsRef.current.stopLoad(); // Stop loading segments
+          hlsRef.current.detachMedia();
+          hlsRef.current.destroy();
+        } catch (err) {
+          // Ignore cleanup errors
+        }
         hlsRef.current = null;
       }
       
       if (videoRef.current) {
-        videoRef.current.src = '';
-        videoRef.current.load();
+        const video = videoRef.current;
+        video.pause();
+        video.muted = true;
+        video.src = '';
+        video.load();
       }
     };
   }, [currentVideo?.url, isActive, shouldPreload, networkSpeed, retryCount, retryVideo]); // Include all dependencies
@@ -368,8 +382,28 @@ function VideoPlayer({
       // Immediately pause and mute to stop audio overlap
       video.pause();
       video.muted = true;
+      
+      // Stop HLS loading if using HLS
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.stopLoad();
+        } catch (err) {
+          // Ignore errors
+        }
+      }
+      
+      // Reset to start to prevent audio glitches on next activation
+      video.currentTime = 0;
+      
       if (process.env.NODE_ENV === 'development') {
-        console.log('⏸️ Video paused immediately (inactive)');
+        console.log('⏸️ Video stopped immediately (inactive)');
+      }
+    } else if (isActive && hlsRef.current) {
+      // Resume loading when active
+      try {
+        hlsRef.current.startLoad();
+      } catch (err) {
+        // Ignore errors
       }
     }
   }, [isActive]);
