@@ -2,13 +2,16 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, startTransition, lazy, Suspense } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 import VideoFeedItemComponent from './VideoFeedItem';
-import DesktopVideoFeed from './DesktopVideoFeed';
-import PerformanceOverlay from './PerformanceOverlay';
 import { VideoFeedItem } from '@/types/neynar';
 import { rafThrottle } from '../utils/taskScheduler';
+import { useFirstInteraction, measureFirstInputDelay } from '../hooks/useFirstInteraction';
+
+// Lazy load non-critical components for faster initial load
+const DesktopVideoFeed = lazy(() => import('./DesktopVideoFeed'));
+const PerformanceOverlay = lazy(() => import('./PerformanceOverlay'));
 
 interface VideoFeedResponse {
   videos: VideoFeedItem[];
@@ -30,6 +33,9 @@ export default function VideoFeed() {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
+  
+  // Track first interaction timing
+  const firstInteraction = useFirstInteraction();
   
   // Memoize toggle functions to prevent re-renders
   const handleMuteToggle = useCallback(() => {
@@ -61,7 +67,10 @@ export default function VideoFeed() {
     const url = new URL('/api/feed', window.location.origin);
     if (cursor) url.searchParams.set('cursor', cursor);
 
-    const response = await fetch(url.toString(), { cache: 'no-store' });
+    const response = await fetch(url.toString(), { 
+      cache: 'no-store',
+      priority: 'high' // Mark as high priority for faster initial load
+    } as RequestInit);
     if (!response.ok) throw new Error('Failed to fetch');
     
     return response.json();
@@ -194,6 +203,14 @@ export default function VideoFeed() {
     loadInitialVideos();
   }, [loadInitialVideos]);
 
+  // Measure First Input Delay in development
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      const cleanup = measureFirstInputDelay();
+      return cleanup;
+    }
+  }, []);
+
   if (loading) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
@@ -289,18 +306,28 @@ export default function VideoFeed() {
       )}
 
       {!isMobile && (
-        <DesktopVideoFeed
-          videos={videos}
-          currentIndex={currentIndex}
-          isMuted={isMuted}
-          onMuteToggle={handleMuteToggle}
-          onNext={() => setCurrentIndex(Math.min(currentIndex + 1, videos.length - 1))}
-          onPrevious={() => setCurrentIndex(Math.max(currentIndex - 1, 0))}
-        />
+        <Suspense fallback={
+          <div className="h-screen bg-black flex items-center justify-center">
+            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+          </div>
+        }>
+          <DesktopVideoFeed
+            videos={videos}
+            currentIndex={currentIndex}
+            isMuted={isMuted}
+            onMuteToggle={handleMuteToggle}
+            onNext={() => setCurrentIndex(Math.min(currentIndex + 1, videos.length - 1))}
+            onPrevious={() => setCurrentIndex(Math.max(currentIndex - 1, 0))}
+          />
+        </Suspense>
       )}
 
-      {/* Performance Overlay in Development */}
-      <PerformanceOverlay />
+      {/* Performance Overlay in Development - Lazy loaded */}
+      {process.env.NODE_ENV === 'development' && (
+        <Suspense fallback={null}>
+          <PerformanceOverlay />
+        </Suspense>
+      )}
       
       {process.env.NODE_ENV === 'development' && (
         <div className="fixed top-4 right-4 z-50 bg-black/70 rounded px-3 py-2 text-xs text-white">

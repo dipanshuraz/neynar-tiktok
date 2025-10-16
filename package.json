@@ -2,6 +2,7 @@
   "name": "farcaster-video-feed",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "TikTok-style vertical video feed for Farcaster content using Neynar v2 API",
   "keywords": [
     "farcaster",
