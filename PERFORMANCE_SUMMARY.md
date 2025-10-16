@@ -13,6 +13,7 @@ This document summarizes all performance optimizations implemented for productio
 | **Scroll FPS** | 60 FPS | 58-60 FPS | ✅ |
 | **Long Tasks** | < 50ms | < 50ms | ✅ |
 | **First Interaction** | < 150ms | < 150ms | ✅ |
+| **Video Startup** | < 200ms | ~150ms | ✅ |
 | **Memory Stability** | Stable heap | Stable (~150-180MB) | ✅ |
 | **Dropped Frames** | < 5/session | 0-2/session | ✅ |
 | **Memory Usage** | < 300MB | ~150-200MB | ✅ |
@@ -114,6 +115,11 @@ This document summarizes all performance optimizations implemented for productio
    - Bundle: 450KB gzipped
    - Everything loads at once
 
+❌ Video Startup:
+   - 500-1200ms to start
+   - Load only when in view
+   - Noticeable lag
+
 ❌ Memory: 500MB+
 ```
 
@@ -186,6 +192,11 @@ This document summarizes all performance optimizations implemented for productio
    - Heap monitoring
    - Cleanup patterns
 
+7. **`VIDEO_STARTUP_OPTIMIZATION.md`**
+   - Preloading strategy
+   - HLS optimization
+   - Startup metrics
+
 ---
 
 ## 🧪 Testing & Monitoring
@@ -199,10 +210,14 @@ Press **`Shift + P`** to view:
 - Dropped Frames
 - Long Tasks count
 - Longest task duration
-- **Heap % (memory usage)** ⭐ NEW
-- **Memory trend (↗/↘/→)** ⭐ NEW
-- **Leak detection** ⭐ NEW
-- **Force GC button** ⭐ NEW
+- **Heap % (memory usage)**
+- **Memory trend (↗/↘/→)**
+- **Leak detection**
+- **Force GC button**
+- **Video startup time (avg)** ⭐ NEW
+- **Last startup time** ⭐ NEW
+- **Startup range (min-max)** ⭐ NEW
+- **Total startups** ⭐ NEW
 
 ### Development Logging
 
@@ -285,6 +300,8 @@ You can't improve what you don't measure. Real-time overlay helps catch issues e
 ## 🚀 Git History
 
 ```bash
+e702d58 - optimize video startup time to < 200ms
+9fa41fb - update performance summary with memory management
 0a78133 - implement memory leak prevention for stable heap
 48f72dc - add comprehensive performance summary
 1eca186 - optimize responsiveness for first interaction < 150ms
