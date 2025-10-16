@@ -18,6 +18,7 @@ interface VideoPlayerProps {
   className?: string;
   shouldPreload?: boolean; // Preload video in background for fast startup
   networkSpeed?: NetworkSpeed; // Adapt HLS settings based on network
+  shouldPlay?: boolean; // External play/pause control (for keyboard shortcuts)
 }
 
 function VideoPlayer({ 
@@ -27,7 +28,8 @@ function VideoPlayer({
   onMuteToggle, 
   className = '',
   shouldPreload = false,
-  networkSpeed = 'medium'
+  networkSpeed = 'medium',
+  shouldPlay = true
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -77,26 +79,15 @@ function VideoPlayer({
   useEffect(() => {
     const shouldLoad = isActive || shouldPreload;
     
-    // Cleanup function for when component becomes inactive
-    const cleanup = () => {
-      if (hlsRef.current) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('🧹 Destroying HLS due to inactive');
-        }
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
+    if (!videoRef.current || !currentVideo?.url || !shouldLoad) {
+      // Don't destroy HLS immediately when inactive - keep it ready for quick return
+      // Only clear loading state
       if (!isActive && isLoading) {
         setIsLoading(false);
       }
-    };
-    
-    if (!videoRef.current || !currentVideo?.url || !shouldLoad) {
-      // Clean up if becoming inactive
-      cleanup();
       
       if (process.env.NODE_ENV === 'development' && videoRef.current && currentVideo?.url) {
-        console.log('⏸️ Video inactive, cleaning up...', { 
+        console.log('⏸️ Video inactive, keeping HLS instance ready...', { 
           isActive,
           shouldPreload 
         });
@@ -121,8 +112,23 @@ function VideoPlayer({
     setIsLoading(true);
     setError(null);
 
-    // Clean up previous
-    cleanup();
+    // Clean up previous HLS instance only if URL is changing
+    if (hlsRef.current) {
+      const prevUrl = hlsRef.current.url;
+      if (prevUrl !== videoUrl) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🧹 Destroying previous HLS (URL changed)');
+        }
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      } else {
+        // Same URL - reuse existing HLS instance
+        if (process.env.NODE_ENV === 'development') {
+          console.log('♻️ Reusing HLS instance for same URL');
+        }
+        return;
+      }
+    }
 
     // Handle direct video formats (MP4, WebM, MOV, OGG)
     if (videoType !== 'hls') {
@@ -279,20 +285,36 @@ function VideoPlayer({
     };
   }, [currentVideo?.url, isActive, shouldPreload, networkSpeed, retryCount, retryVideo]); // Include all dependencies
 
+  // Immediate pause when becoming inactive (prevent audio overlap)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!isActive) {
+      // Immediately pause and mute to stop audio overlap
+      video.pause();
+      video.muted = true;
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏸️ Video paused immediately (inactive)');
+      }
+    }
+  }, [isActive]);
+
   // Playback control
   useEffect(() => {
     const video = videoRef.current;
     
-    if (!video || isLoading || error) {
+    if (!video || error) {
       return;
     }
 
     video.muted = isMuted;
 
-    if (isActive) {
+    if (isActive && shouldPlay) {
       // Track time from entering view to playback start
       playbackStartTimeRef.current = performance.now();
       
+      // Try to play immediately, even if still loading
       video.play()
         .then(() => {
           const startupTime = performance.now() - playbackStartTimeRef.current;
@@ -305,17 +327,24 @@ function VideoPlayer({
             console.log(`${status} Video startup: ${startupTime.toFixed(0)}ms (target: < 200ms)`);
           }
           setShowPlayButton(false);
+          setIsLoading(false); // Clear loading on successful play
         })
         .catch(err => {
           if (process.env.NODE_ENV === 'development') {
             console.warn('⚠️ Play failed:', err.message);
           }
-          setShowPlayButton(true);
+          // Only show play button if it's a user interaction error
+          if (err.name === 'NotAllowedError') {
+            setShowPlayButton(true);
+          }
+          // Don't block playback for other errors - let it try again
         });
-    } else {
+    } else if (isActive && !shouldPlay) {
+      // Pause when shouldPlay is false (keyboard shortcut)
       video.pause();
+      setShowPlayButton(true);
     }
-  }, [isActive, isMuted, isLoading, error]);
+  }, [isActive, isMuted, error, shouldPreload, shouldPlay]);
 
   // Video events
   useEffect(() => {
@@ -330,11 +359,23 @@ function VideoPlayer({
 
     const onPause = () => {
       setIsPlaying(false);
+      // Show play button when paused manually (if active)
+      if (isActive) {
+        setShowPlayButton(true);
+      }
     };
 
     const onLoadedMetadata = () => {
       // Video metadata loaded successfully
       setShowPoster(false);
+      setIsLoading(false); // Clear loading as soon as metadata is ready
+      
+      // Try to play if active and video is ready
+      if (isActive && video.readyState >= 2) { // HAVE_CURRENT_DATA or better
+        video.play().catch(() => {
+          // Ignore errors, will retry when canplay fires
+        });
+      }
     };
 
     const onCanPlay = () => {
@@ -367,6 +408,13 @@ function VideoPlayer({
       }
       // Video has loaded enough to start playing
       setIsLoading(false);
+      
+      // Aggressively try to play as soon as data is loaded
+      if (isActive) {
+        video.play().catch(() => {
+          // Ignore errors, will retry in main playback effect
+        });
+      }
     };
     
     const onError = (e: Event) => {
@@ -414,7 +462,7 @@ function VideoPlayer({
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('error', onError);
     };
-  }, [retryVideo, error, retryCount]);
+  }, [retryVideo, error, retryCount, isActive]);
 
   if (!currentVideo) {
     return (
@@ -483,7 +531,7 @@ function VideoPlayer({
         loop
         muted={isMuted}
         playsInline
-        preload={shouldPreload || isActive ? "auto" : "metadata"} // Auto for preload/active, metadata otherwise
+        preload="auto" // Always auto-load for instant playback
         poster={currentVideo.thumbnail} // Native poster attribute as fallback
         className="w-full h-full object-cover cursor-pointer" // object-cover for mobile fullscreen
         style={{ 
@@ -525,8 +573,11 @@ function VideoPlayer({
 
       {/* Play Button Overlay */}
       {showPlayButton && !isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-          <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center hover:scale-110 transition-transform">
+        <div 
+          className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer z-30"
+          onClick={handleVideoClick}
+        >
+          <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center hover:scale-110 transition-transform active:scale-95">
             <Play className="w-10 h-10 text-white fill-white ml-1" />
           </div>
         </div>

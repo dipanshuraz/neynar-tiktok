@@ -203,9 +203,11 @@ export async function GET(request: NextRequest) {
       // Simple pagination for local data
       const startIndex = cursor ? parseInt(cursor) : 0;
       const endIndex = startIndex + limit;
+      console.log(`📄 Pagination: startIndex=${startIndex}, endIndex=${endIndex}, total=${allVideoItems.length}, limit=${limit}`);
       paginatedItems = allVideoItems.slice(startIndex, endIndex);
       hasMore = endIndex < allVideoItems.length;
       nextCursor = hasMore ? endIndex.toString() : undefined;
+      console.log(`✂️ After slice: ${paginatedItems.length} items`);
     } else {
       // For Neynar, return all found videos with original cursor
       paginatedItems = allVideoItems.slice(0, limit);
@@ -213,7 +215,7 @@ export async function GET(request: NextRequest) {
       hasMore = !!nextCursor;
     }
 
-    console.log(`✅ Returning ${paginatedItems.length} HLS videos`);
+    console.log(`✅ Returning ${paginatedItems.length} videos (out of ${allVideoItems.length} total)`);
     console.log(`Has more: ${hasMore}`);
     
     // Log first video for debugging

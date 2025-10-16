@@ -15,6 +15,7 @@ interface VideoFeedItemProps {
   isMobile?: boolean;
   shouldPreload?: boolean; // Pass through to VideoPlayer
   networkSpeed?: NetworkSpeed; // Network quality info
+  shouldPlay?: boolean; // Pass through for keyboard control
 }
 
 function VideoFeedItemComponent({ 
@@ -24,7 +25,8 @@ function VideoFeedItemComponent({
   onMuteToggle,
   isMobile = true,
   shouldPreload = false,
-  networkSpeed = 'medium'
+  networkSpeed = 'medium',
+  shouldPlay = true
 }: VideoFeedItemProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -101,6 +103,7 @@ function VideoFeedItemComponent({
           className="w-full h-full"
           shouldPreload={shouldPreload}
           networkSpeed={networkSpeed}
+          shouldPlay={shouldPlay}
         />
 
         {/* TikTok-Style Overlays */}
@@ -273,6 +276,7 @@ export default memo(VideoFeedItemComponent, (prevProps, nextProps) => {
     prevProps.isMuted === nextProps.isMuted &&
     prevProps.isMobile === nextProps.isMobile &&
     prevProps.shouldPreload === nextProps.shouldPreload &&
-    prevProps.networkSpeed === nextProps.networkSpeed
+    prevProps.networkSpeed === nextProps.networkSpeed &&
+    prevProps.shouldPlay === nextProps.shouldPlay
   );
 });

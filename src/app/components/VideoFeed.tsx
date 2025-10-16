@@ -44,6 +44,7 @@ export default function VideoFeed({
   const [loadingMore, setLoadingMore] = useState(false);
   const [isMuted, setIsMuted] = useState(preferences.isMuted); // Initialize from preferences
   const [isMobile, setIsMobile] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(true); // Track play/pause state
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -186,9 +187,8 @@ export default function VideoFeed({
         let mostVisible = { index: -1, ratio: 0 };
         
         entries.forEach((entry) => {
-          // Use 30% visibility threshold for better initial load detection
-          // Still stable during quick swipes due to debouncing
-          if (entry.isIntersecting && entry.intersectionRatio > 0.3) {
+          // Lower threshold for faster activation
+          if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
             const index = parseInt(entry.target.getAttribute('data-index') || '0');
             if (entry.intersectionRatio > mostVisible.ratio) {
               mostVisible = { index, ratio: entry.intersectionRatio };
@@ -202,34 +202,32 @@ export default function VideoFeed({
 
         // Only activate if we found a clearly visible video and it's different from last
         if (mostVisible.index >= 0 && mostVisible.index !== lastActivatedIndex) {
-          // Debounce: wait 300ms for scrolling to settle before activating
-          // This prevents rapid video switching during quick swipes
+          // Immediate activation for the first video, minimal debounce for others
+          const delay = lastActivatedIndex === -1 ? 0 : 16; // 0ms for first, 16ms (~1 frame) for others
+          
           pendingUpdate = window.setTimeout(() => {
             lastActivatedIndex = mostVisible.index;
             
-            // Use startTransition for non-urgent updates
-            startTransition(() => {
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`👁️ Video ${mostVisible.index + 1} activated (ratio: ${mostVisible.ratio.toFixed(2)})`);
-              }
-              setCurrentIndex(mostVisible.index);
-              
-              const videoId = videos[mostVisible.index]?.id;
-              setLastVideoIndex(mostVisible.index, videoId);
-            });
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`👁️ Video ${mostVisible.index + 1} activated (ratio: ${mostVisible.ratio.toFixed(2)})`);
+            }
+            setCurrentIndex(mostVisible.index);
+            
+            const videoId = videos[mostVisible.index]?.id;
+            setLastVideoIndex(mostVisible.index, videoId);
             
             if (mostVisible.index >= videos.length - 2 && hasMore && !loadingMore) {
               loadMoreVideos();
             }
             
             pendingUpdate = null;
-          }, 300); // Increased from 150ms to 300ms for better stability
+          }, delay); // 0ms for first video, 16ms for subsequent videos
         }
       },
       {
         root: container,
-        threshold: [0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], // Higher thresholds for clearer visibility
-        rootMargin: '30% 0px', // Further reduced to prevent premature loading during quick swipes
+        threshold: [0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        rootMargin: '10% 0px', // Reduced for immediate activation
       }
     );
 
@@ -260,15 +258,24 @@ export default function VideoFeed({
       } else if (e.code === 'ArrowDown' && currentIndex < videos.length - 1) {
         e.preventDefault();
         setCurrentIndex(currentIndex + 1);
-      } else if (e.code === 'KeyM' || e.code === 'Space') {
+      } else if (e.code === 'Space') {
+        e.preventDefault();
+        setIsPlaying(!isPlaying);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`⌨️ Space pressed: ${!isPlaying ? 'Play' : 'Pause'}`);
+        }
+      } else if (e.code === 'KeyM') {
         e.preventDefault();
         setIsMuted(!isMuted);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`⌨️ M pressed: ${!isMuted ? 'Mute' : 'Unmute'}`);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, videos.length, isMuted]);
+  }, [currentIndex, videos.length, isMuted, isPlaying]);
 
   // Optimize scroll performance with throttled passive listeners
   useEffect(() => {
@@ -292,18 +299,14 @@ export default function VideoFeed({
   // Ensure first video is active on mount (mobile only)
   // This runs once when videos first load to trigger autoplay
   useEffect(() => {
-    if (isMobile && videos.length > 0) {
+    if (isMobile && videos.length > 0 && currentIndex === 0) {
       // Force first video to be active immediately after videos load
       // This triggers the video.play() in VideoPlayer
-      const timer = setTimeout(() => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('🎬 Forcing first video active on mount');
-        }
-        // Trigger a state update to force re-render and activate video
-        setCurrentIndex(prev => prev === 0 ? 0 : 0);
-      }, 50); // Shorter delay for faster autoplay
-      
-      return () => clearTimeout(timer);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🎬 Forcing first video active on mount');
+      }
+      // Immediately set as active - no delay
+      setCurrentIndex(0);
     }
   }, [videos.length, isMobile]); // Only depend on videos.length, not currentIndex
 
@@ -368,9 +371,9 @@ export default function VideoFeed({
             div::-webkit-scrollbar { display: none; }
           `}</style>
           
-          {/* Virtual scrolling: Only render visible videos */}
+          {/* Virtual scrolling: Render visible + adjacent videos */}
           {videos.map((video, index) => {
-            const isInRange = Math.abs(index - currentIndex) <= 1;
+            const isInRange = Math.abs(index - currentIndex) <= 2; // Keep 2 before/after loaded
             // Network-aware preloading: adapts based on connection speed
             const shouldPreload = shouldPreloadVideo(currentIndex, index, networkInfo);
             
@@ -397,6 +400,7 @@ export default function VideoFeed({
                     isMobile={true}
                     shouldPreload={shouldPreload}
                     networkSpeed={networkInfo.speed}
+                    shouldPlay={isPlaying}
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-900" />

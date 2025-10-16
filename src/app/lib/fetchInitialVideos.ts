@@ -18,7 +18,7 @@ export async function fetchInitialVideos(): Promise<VideoFeedResponse> {
     // Always fetch from API route (which handles local vs. remote data)
     // Use the full URL since we're on the server
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const response = await fetch(`${baseUrl}/api/feed?limit=1`, {
+    const response = await fetch(`${baseUrl}/api/feed?limit=50`, {
       next: { revalidate: 60 }, // Revalidate every 60 seconds
     });
 
