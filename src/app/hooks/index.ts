@@ -26,3 +26,11 @@ export {
   type NetworkSpeed,
 } from './useNetworkQuality';
 
+// Playback preferences
+export {
+  usePlaybackPreferences,
+  isLocalStorageAvailable,
+  getStorageSize,
+  formatStorageSize,
+} from './usePlaybackPreferences';
+

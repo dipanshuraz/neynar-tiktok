@@ -10,6 +10,7 @@ import { rafThrottle } from '../utils/taskScheduler';
 import { useFirstInteraction, measureFirstInputDelay } from '../hooks/useFirstInteraction';
 import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
 import { useNetworkQuality, shouldPreloadVideo } from '../hooks/useNetworkQuality';
+import { usePlaybackPreferences } from '../hooks/usePlaybackPreferences';
 
 // Lazy load non-critical components for faster initial load
 const DesktopVideoFeed = lazy(() => import('./DesktopVideoFeed'));
@@ -32,6 +33,9 @@ export default function VideoFeed({
   initialCursor,
   initialHasMore = true 
 }: VideoFeedProps) {
+  // Playback preferences (mute state, last position)
+  const { preferences, setMuted, setLastVideoIndex } = usePlaybackPreferences();
+  
   // Initialize with SSR data for instant first render
   const [videos, setVideos] = useState<VideoFeedItem[]>(initialVideos);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -40,7 +44,7 @@ export default function VideoFeed({
   const [nextCursor, setNextCursor] = useState<string | undefined>(initialCursor);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(preferences.isMuted); // Initialize from preferences
   const [isMobile, setIsMobile] = useState(true);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,10 +60,32 @@ export default function VideoFeed({
   // Monitor network quality for adaptive preloading
   const networkInfo = useNetworkQuality();
   
+  // Restore last video position on mount (after videos load)
+  useEffect(() => {
+    if (videos.length > 0 && preferences.lastVideoIndex > 0 && preferences.lastVideoIndex < videos.length) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📍 Restoring last position: index ${preferences.lastVideoIndex}`);
+      }
+      setCurrentIndex(preferences.lastVideoIndex);
+      
+      // Scroll to saved position
+      setTimeout(() => {
+        const savedVideo = videoRefs.current.get(preferences.lastVideoIndex);
+        if (savedVideo && containerRef.current) {
+          savedVideo.scrollIntoView({ behavior: 'auto', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [videos.length, preferences.lastVideoIndex]);
+  
   // Memoize toggle functions to prevent re-renders
   const handleMuteToggle = useCallback(() => {
-    setIsMuted(prev => !prev);
-  }, []);
+    setIsMuted(prev => {
+      const newMuted = !prev;
+      setMuted(newMuted); // Save to preferences
+      return newMuted;
+    });
+  }, [setMuted]);
 
   useEffect(() => {
     const checkIsMobile = () => {
@@ -184,6 +210,10 @@ export default function VideoFeed({
                 console.log(`👁️ Video ${mostVisible.index + 1} activated (ratio: ${mostVisible.ratio.toFixed(2)})`);
               }
               setCurrentIndex(mostVisible.index);
+              
+              // Save position to preferences (with video ID if available)
+              const videoId = videos[mostVisible.index]?.id;
+              setLastVideoIndex(mostVisible.index, videoId);
             });
             
             // Load more videos if needed (urgent)
