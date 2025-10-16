@@ -137,6 +137,10 @@ function VideoPlayer({
     // Get network-aware buffer settings
     const bufferSettings = getHLSBufferSettings(networkSpeed);
     
+    // Aggressive timeouts for mobile to prevent long waits
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const timeoutMultiplier = isMobile ? 0.5 : 1; // Half timeouts on mobile
+    
     const hls = new Hls({
       debug: false, // Disable debug in production for performance
       enableWorker: true,
@@ -147,17 +151,21 @@ function VideoPlayer({
       maxBufferHole: 0.5, // Jump over small holes
       lowLatencyMode: true,
       backBufferLength: 0, // Don't keep old segments
-      // Fast manifest loading
-      manifestLoadingTimeOut: 10000,
-      manifestLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2, // Fewer retries on slow connections
-      manifestLoadingRetryDelay: 1000,
-      // Fast fragment loading
-      fragLoadingTimeOut: 20000,
-      fragLoadingMaxRetry: networkSpeed === 'slow' ? 2 : 3, // Fewer retries on slow connections
-      fragLoadingRetryDelay: 1000,
+      // Aggressive manifest loading for mobile
+      manifestLoadingTimeOut: 5000 * timeoutMultiplier, // 5s desktop, 2.5s mobile
+      manifestLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
+      manifestLoadingRetryDelay: 500, // Faster retry
+      // Aggressive fragment loading for mobile
+      fragLoadingTimeOut: 10000 * timeoutMultiplier, // 10s desktop, 5s mobile
+      fragLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
+      fragLoadingRetryDelay: 500,
       // Start playback ASAP
       liveSyncDurationCount: 1,
       liveMaxLatencyDurationCount: 3,
+      // Abort controller for stalled requests
+      xhrSetup: function(xhr: XMLHttpRequest) {
+        xhr.timeout = 5000 * timeoutMultiplier; // 5s desktop, 2.5s mobile
+      },
     });
     
     if (process.env.NODE_ENV === 'development') {

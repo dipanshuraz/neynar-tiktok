@@ -133,13 +133,14 @@ export default function VideoFeed() {
         // Use requestAnimationFrame to batch updates
         requestAnimationFrame(() => {
           entries.forEach((entry) => {
-            if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+            // Lower threshold for mobile responsiveness - trigger at 30% visible
+            if (entry.isIntersecting && entry.intersectionRatio > 0.3) {
               const index = parseInt(entry.target.getAttribute('data-index') || '0');
               
               // Use startTransition for non-urgent updates
               startTransition(() => {
                 if (process.env.NODE_ENV === 'development') {
-                  console.log(`👁️ Video ${index + 1} is active`);
+                  console.log(`👁️ Video ${index + 1} is active (ratio: ${entry.intersectionRatio.toFixed(2)})`);
                 }
                 setCurrentIndex(index);
               });
@@ -154,7 +155,7 @@ export default function VideoFeed() {
       },
       {
         root: container,
-        threshold: 0.5,
+        threshold: [0, 0.3, 0.5, 0.8, 1.0], // Multiple thresholds for better mobile detection
         // Add rootMargin to preload adjacent videos
         rootMargin: '100% 0px',
       }
@@ -213,6 +214,19 @@ export default function VideoFeed() {
   useEffect(() => {
     loadInitialVideos();
   }, [loadInitialVideos]);
+
+  // Ensure first video is active on mount (mobile only)
+  useEffect(() => {
+    if (isMobile && videos.length > 0 && currentIndex === 0) {
+      // Force first video to be active after videos load
+      setTimeout(() => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🎬 Forcing first video active on mount');
+        }
+        setCurrentIndex(0);
+      }, 100);
+    }
+  }, [videos.length, isMobile]);
 
   // Measure First Input Delay in development
   useEffect(() => {
