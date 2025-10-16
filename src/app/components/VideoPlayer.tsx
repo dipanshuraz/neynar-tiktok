@@ -624,7 +624,7 @@ function VideoPlayer({
 
   return (
     <div 
-      className={`relative bg-black ${className}`}
+      className={`relative bg-black ${className} flex items-center justify-center`}
       style={{ 
         contain: 'layout style paint',
         willChange: isActive ? 'transform' : 'auto'
@@ -686,7 +686,7 @@ function VideoPlayer({
         preload="auto" // Always auto-load for instant playback
         poster={currentVideo.thumbnail} // Native poster attribute as fallback
         {...((isActive || shouldPreload) ? { fetchpriority: 'high' as const } : {})} // High priority for active and preloading videos
-        className={`w-full h-full cursor-pointer ${isVerticalVideo ? 'object-cover' : 'object-contain'}`} // object-cover for 9:16, object-contain for others
+        className={`cursor-pointer ${isVerticalVideo ? 'w-full h-full object-cover' : 'max-w-full max-h-full object-contain'}`} // Vertical: fill screen, Horizontal: center with max dimensions
         style={{ 
           display: showPoster ? 'none' : 'block',
           transform: 'translateZ(0)', // Force GPU acceleration
