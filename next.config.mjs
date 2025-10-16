@@ -30,8 +30,13 @@ const nextConfig = {
   experimental: {
     // optimizeCss requires 'critters' package - disabled for now
     // optimizeCss: true,
-    optimizePackageImports: ['lucide-react'], // Optimize icon imports
+    optimizePackageImports: ['lucide-react', '@iconify/react'], // Optimize icon imports
+    // Parallel route segment compilation for faster builds
+    webpackBuildWorker: true,
   },
+  
+  // Production source maps for better debugging (disable for faster builds)
+  productionBrowserSourceMaps: false,
 
   // Image optimization
   images: {
@@ -39,7 +44,7 @@ const nextConfig = {
     formats: ['image/webp', 'image/avif'],
   },
 
-  // Headers for better caching and security
+  // Headers for better caching, compression, and security
   async headers() {
     return [
       {
@@ -57,10 +62,37 @@ const nextConfig = {
             key: 'X-Content-Type-Options',
             value: 'nosniff'
           },
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN'
+          },
+        ],
+      },
+      // Cache static assets aggressively
+      {
+        source: '/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      // Cache images with stale-while-revalidate
+      {
+        source: '/:all*(svg|jpg|jpeg|png|gif|ico|webp|avif)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
         ],
       },
     ];
   },
+  
+  // Compress responses
+  compress: true,
 };
 
 export default nextConfig;

@@ -173,7 +173,7 @@ function VideoFeedItemComponent({
         <div className="absolute bottom-16 right-3 flex flex-col items-center space-y-6">
           {/* Avatar with Follow Button */}
           <div className="relative">
-            <button className="block">
+            <button className="block" aria-label={`View ${cast.author.username}'s profile`}>
               <img
                 src={cast.author.pfp_url || '/default-avatar.png'}
                 alt={cast.author.display_name}
@@ -190,6 +190,7 @@ function VideoFeedItemComponent({
                   ? 'bg-gray-500 text-white'
                   : 'bg-tiktok-red text-white hover:bg-red-600'
               }`}
+              aria-label={isFollowing ? `Unfollow ${cast.author.username}` : `Follow ${cast.author.username}`}
             >
               <Plus className="w-3 h-3" />
             </button>
@@ -202,6 +203,7 @@ function VideoFeedItemComponent({
               className={`w-12 h-12 flex items-center justify-center transition-transform active:scale-95 ${
                 isLiked ? 'animate-heart-beat' : ''
               }`}
+              aria-label={isLiked ? 'Unlike video' : 'Like video'}
             >
               <Heart 
                 className={`w-8 h-8 ${
@@ -221,6 +223,7 @@ function VideoFeedItemComponent({
             <button
               onClick={handleComment}
               className="w-12 h-12 flex items-center justify-center transition-transform active:scale-95"
+              aria-label="Comment on video"
             >
               <MessageCircle className="w-7 h-7 text-white fill-none" />
             </button>
@@ -234,6 +237,7 @@ function VideoFeedItemComponent({
             <button
               onClick={handleShare}
               className="w-12 h-12 flex items-center justify-center transition-transform active:scale-95"
+              aria-label="Share video"
             >
               <Share className="w-7 h-7 text-white fill-none" />
             </button>

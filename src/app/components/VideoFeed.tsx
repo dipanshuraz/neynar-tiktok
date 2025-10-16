@@ -307,13 +307,19 @@ export default function VideoFeed({
       const data = await fetchVideos(nextCursor);
       
       if (data.videos && data.videos.length > 0) {
-        setVideos(prev => [...prev, ...data.videos]);
+        setVideos(prev => {
+          const newTotal = prev.length + data.videos.length;
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ Loaded ${data.videos.length} more videos. Total: ${prev.length} + ${data.videos.length} = ${newTotal}`);
+          }
+          return [...prev, ...data.videos];
+        });
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
         
         if (process.env.NODE_ENV === 'development') {
-          console.log(`✅ Loaded ${data.videos.length} more videos. Total: ${videos.length + data.videos.length}`);
           console.log(`📄 Next cursor: ${data.nextCursor ? data.nextCursor.substring(0, 20) + '...' : 'none'}`);
+          console.log(`🔄 Has more: ${data.hasMore}`);
         }
       } else {
         setHasMore(false);
@@ -327,7 +333,7 @@ export default function VideoFeed({
     } finally {
       setLoadingMore(false);
     }
-  }, [fetchVideos, hasMore, loadingMore, nextCursor, videos.length]);
+  }, [fetchVideos, hasMore, loadingMore, nextCursor]);
 
   // Intersection observer - with debouncing for quick swipes
   useEffect(() => {
@@ -377,9 +383,13 @@ export default function VideoFeed({
             const loadMoreTrigger = Math.floor(videos.length / 3);
             if (mostVisible.index >= loadMoreTrigger && hasMore && !loadingMore) {
               if (process.env.NODE_ENV === 'development') {
-                console.log(`🔄 Triggering load more at ${mostVisible.index + 1}/${videos.length} (trigger: ${loadMoreTrigger + 1})`);
+                console.log(`🔄 Triggering load more at video ${mostVisible.index + 1}/${videos.length} (trigger point: ${loadMoreTrigger + 1})`);
+                console.log(`   State: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${nextCursor?.substring(0, 15)}...`);
               }
               loadMoreVideos();
+            } else if (process.env.NODE_ENV === 'development' && mostVisible.index >= loadMoreTrigger) {
+              // Debug: why didn't we trigger?
+              console.log(`⏸️ Not triggering load more: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${!!nextCursor}`);
             }
             
             pendingUpdate = null;
@@ -409,7 +419,7 @@ export default function VideoFeed({
       }
       videoRefs.current.clear();
     };
-  }, [isMobile, videos.length, hasMore, loadingMore, loadMoreVideos, nextCursor, setLastVideoIndex]);
+  }, [isMobile, videos.length, loadMoreVideos, setLastVideoIndex]);
 
   // Keyboard navigation with passive listeners
   useEffect(() => {
@@ -426,7 +436,7 @@ export default function VideoFeed({
         const loadMoreTrigger = Math.floor(videos.length / 3);
         if (newIndex >= loadMoreTrigger && hasMore && !loadingMore) {
           if (process.env.NODE_ENV === 'development') {
-            console.log(`🔄 Keyboard navigation triggering load more at ${newIndex + 1}/${videos.length}`);
+            console.log(`🔄 Keyboard navigation triggering load more at ${newIndex + 1}/${videos.length} (trigger: ${loadMoreTrigger + 1})`);
           }
           loadMoreVideos();
         }
@@ -447,7 +457,7 @@ export default function VideoFeed({
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, videos.length, isMuted, isPlaying, hasMore, loadingMore, loadMoreVideos]);
+  }, [currentIndex, videos.length, isMuted, isPlaying, loadMoreVideos]);
 
   // Optimize scroll performance with throttled passive listeners
   useEffect(() => {

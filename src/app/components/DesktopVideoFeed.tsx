@@ -93,6 +93,7 @@ export default function DesktopVideoFeed({
               <button
                 onClick={onPrevious}
                 className="absolute left-4 top-1/2 transform -translate-y-1/2 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center backdrop-blur-sm transition-all"
+                aria-label="Previous video"
               >
                 <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -104,6 +105,7 @@ export default function DesktopVideoFeed({
               <button
                 onClick={onNext}
                 className="absolute right-4 top-1/2 transform -translate-y-1/2 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center backdrop-blur-sm transition-all"
+                aria-label="Next video"
               >
                 <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -156,7 +158,10 @@ export default function DesktopVideoFeed({
             <div className="p-4 border-b border-gray-800">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-white font-semibold text-lg">Actions</h3>
-                <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
+                <button 
+                  className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                  aria-label="More options"
+                >
                   <MoreHorizontal className="w-5 h-5 text-white" />
                 </button>
               </div>
@@ -170,6 +175,7 @@ export default function DesktopVideoFeed({
                       ? 'bg-gray-700 text-white hover:bg-gray-600'
                       : 'bg-tiktok-red text-white hover:bg-red-600'
                   }`}
+                  aria-label={isFollowing ? `Unfollow ${cast.author.username}` : `Follow ${cast.author.username}`}
                 >
                   <Plus className="w-4 h-4" />
                   <span>{isFollowing ? 'Following' : 'Follow'}</span>
@@ -181,6 +187,7 @@ export default function DesktopVideoFeed({
                   <button
                     onClick={() => setIsLiked(!isLiked)}
                     className="flex-1 flex flex-col items-center space-y-1 p-3 hover:bg-gray-800 rounded-lg transition-colors"
+                    aria-label={isLiked ? 'Unlike video' : 'Like video'}
                   >
                     <Heart 
                       className={`w-6 h-6 ${
@@ -198,6 +205,7 @@ export default function DesktopVideoFeed({
                   <button
                     onClick={() => setShowComments(!showComments)}
                     className="flex-1 flex flex-col items-center space-y-1 p-3 hover:bg-gray-800 rounded-lg transition-colors"
+                    aria-label="View comments"
                   >
                     <MessageCircle className="w-6 h-6 text-white" />
                     <span className="text-white text-xs">
@@ -206,7 +214,10 @@ export default function DesktopVideoFeed({
                   </button>
 
                   {/* Share */}
-                  <button className="flex-1 flex flex-col items-center space-y-1 p-3 hover:bg-gray-800 rounded-lg transition-colors">
+                  <button 
+                    className="flex-1 flex flex-col items-center space-y-1 p-3 hover:bg-gray-800 rounded-lg transition-colors"
+                    aria-label="Share video"
+                  >
                     <Share className="w-6 h-6 text-white" />
                     <span className="text-white text-xs">Share</span>
                   </button>
@@ -268,6 +279,7 @@ export default function DesktopVideoFeed({
                   <button 
                     onClick={() => window.open(`https://warpcast.com/${cast.author.username}/${cast.hash.slice(0, 10)}`, '_blank')}
                     className="mt-3 px-4 py-2 bg-white/10 text-white rounded-lg text-sm hover:bg-white/20 transition-colors"
+                    aria-label="View this video on Warpcast"
                   >
                     View on Warpcast
                   </button>

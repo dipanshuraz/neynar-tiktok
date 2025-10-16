@@ -48,6 +48,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full">
+      <head>
+        {/* Resource hints for external domains */}
+        <link rel="dns-prefetch" href="https://api.neynar.com" />
+        <link rel="dns-prefetch" href="https://stream.farcaster.xyz" />
+        <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+        <link rel="preconnect" href="https://api.neynar.com" />
+        <link rel="preconnect" href="https://stream.farcaster.xyz" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="anonymous" />
+      </head>
       <body className={`${inter.variable} font-sans h-full overflow-hidden antialiased`}>
         {children}
       </body>

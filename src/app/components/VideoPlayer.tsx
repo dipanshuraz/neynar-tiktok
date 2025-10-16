@@ -5,11 +5,25 @@ import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { ProcessedVideo } from '@/types/neynar';
 import { Play, Volume2, VolumeX, AlertCircle, Share2 } from 'lucide-react';
 import { Icon } from '@iconify/react';
-import Hls from 'hls.js';
 import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
 import { reportVideoStartup } from '../hooks/useVideoStartupMetrics';
 import { NetworkSpeed, getHLSBufferSettings } from '../hooks/useNetworkQuality';
 import { reportVideoError, reportVideoLoaded } from '../hooks/useErrorMetrics';
+
+// Dynamically import HLS.js only when needed (reduces initial bundle)
+type HlsType = import('hls.js').default;
+let HlsClass: typeof import('hls.js').default | null = null;
+let hlsPromise: Promise<typeof import('hls.js')> | null = null;
+
+async function getHls() {
+  if (HlsClass) return HlsClass;
+  if (!hlsPromise) {
+    hlsPromise = import('hls.js');
+  }
+  const module = await hlsPromise;
+  HlsClass = module.default;
+  return HlsClass;
+}
 
 interface VideoPlayerProps {
   videos: ProcessedVideo[];
@@ -39,7 +53,7 @@ function VideoPlayer({
   castText
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
+  const hlsRef = useRef<HlsType | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPlayButton, setShowPlayButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -234,117 +248,124 @@ function VideoPlayer({
       return;
     }
 
-    // HLS.js
-    if (!Hls.isSupported()) {
-      console.error('❌ HLS.js not supported');
-      setError('HLS not supported in this browser');
-      setIsLoading(false);
-      return;
-    }
-
-    const bufferSettings = getHLSBufferSettings(networkSpeed);
-    
-    // Aggressive timeouts for mobile to prevent long waits
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const timeoutMultiplier = isMobile ? 0.5 : 1; // Half timeouts on mobile
-    
-    const hls = new Hls({
-      debug: false, // Disable debug in production for performance
-      enableWorker: true,
-      // Network-adaptive buffer settings
-      maxBufferLength: bufferSettings.maxBufferLength,
-      maxMaxBufferLength: bufferSettings.maxMaxBufferLength,
-      maxBufferSize: bufferSettings.maxBufferSize,
-      maxBufferHole: 0.5, // Jump over small holes
-      lowLatencyMode: true,
-      backBufferLength: 0, // Don't keep old segments
-      // Aggressive manifest loading for mobile
-      manifestLoadingTimeOut: 5000 * timeoutMultiplier, // 5s desktop, 2.5s mobile
-      manifestLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
-      manifestLoadingRetryDelay: 500, // Faster retry
-      // Aggressive fragment loading for mobile
-      fragLoadingTimeOut: 10000 * timeoutMultiplier, // 10s desktop, 5s mobile
-      fragLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
-      fragLoadingRetryDelay: 500,
-      liveSyncDurationCount: 1,
-      liveMaxLatencyDurationCount: 3,
-      // Abort controller for stalled requests
-      xhrSetup: function(xhr: XMLHttpRequest) {
-        xhr.timeout = 5000 * timeoutMultiplier; // 5s desktop, 2.5s mobile
-      },
-    });
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`📶 HLS config for ${networkSpeed} network:`, bufferSettings);
-    }
-
-    hlsRef.current = hls;
-
-    hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-      hls.loadSource(videoUrl);
-    });
-
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      const loadTime = performance.now() - preloadStartTimeRef.current;
-      if (process.env.NODE_ENV === 'development') {
-        if (shouldPreload && !isActive) {
-          console.log(`✅ Video preloaded in ${loadTime.toFixed(0)}ms`);
-        } else {
-          console.log(`✅ HLS manifest parsed in ${loadTime.toFixed(0)}ms`);
-        }
-      }
-      // Don't set isLoading to false here - wait for canplay event
-      setError(null);
-    });
-    
-    hls.on(Hls.Events.FRAG_LOADED, () => {
-      // First fragment loaded - video should be ready soon
-      if (process.env.NODE_ENV === 'development') {
-        console.log('📦 HLS fragment loaded');
-      }
-    });
-
-    hls.on(Hls.Events.ERROR, (event, data) => {
-      if (data.fatal) {
-        const errorMsg = `HLS Error: ${data.type} - ${data.details}`;
-        
-        if (process.env.NODE_ENV === 'development') {
-          console.error('❌ HLS Fatal Error:', data);
-        }
-        
-        setError(errorMsg);
+    // HLS.js - Load dynamically to reduce initial bundle
+    const setupHls = async () => {
+      const HlsClass = await getHls();
+      
+      if (!HlsClass.isSupported()) {
+        console.error('❌ HLS.js not supported');
+        setError('HLS not supported in this browser');
         setIsLoading(false);
-        
-        // Report error
-        reportVideoError(data.type, retryCount, false);
-        
-        // Handle specific error types
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-          // Network errors - retry
-          retryVideo();
-        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          // Media errors - try to recover
-          if (process.env.NODE_ENV === 'development') {
-            console.log('🔄 Attempting media error recovery...');
-          }
-          hls.recoverMediaError();
-        } else if (data.details === 'manifestLoadError' || data.details === 'manifestParsingError') {
-          // Manifest errors - retry with delay
-          if (process.env.NODE_ENV === 'development') {
-            console.log('📋 Manifest error - retrying...');
-          }
-          retryVideo();
-        } else {
-          // Other fatal errors - show poster and allow manual retry
-          if (process.env.NODE_ENV === 'development') {
-            console.log('❌ Non-recoverable error - showing poster');
-          }
-          setShowPoster(true);
-        }
+        return;
       }
-    });
 
-    hls.attachMedia(video);
+      const bufferSettings = getHLSBufferSettings(networkSpeed);
+      
+      // Aggressive timeouts for mobile to prevent long waits
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const timeoutMultiplier = isMobile ? 0.5 : 1; // Half timeouts on mobile
+      
+      const hls = new HlsClass({
+        debug: false, // Disable debug in production for performance
+        enableWorker: true,
+        // Network-adaptive buffer settings
+        maxBufferLength: bufferSettings.maxBufferLength,
+        maxMaxBufferLength: bufferSettings.maxMaxBufferLength,
+        maxBufferSize: bufferSettings.maxBufferSize,
+        maxBufferHole: 0.5, // Jump over small holes
+        lowLatencyMode: true,
+        backBufferLength: 0, // Don't keep old segments
+        // Aggressive manifest loading for mobile
+        manifestLoadingTimeOut: 5000 * timeoutMultiplier, // 5s desktop, 2.5s mobile
+        manifestLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
+        manifestLoadingRetryDelay: 500, // Faster retry
+        // Aggressive fragment loading for mobile
+        fragLoadingTimeOut: 10000 * timeoutMultiplier, // 10s desktop, 5s mobile
+        fragLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
+        fragLoadingRetryDelay: 500,
+        liveSyncDurationCount: 1,
+        liveMaxLatencyDurationCount: 3,
+        // Abort controller for stalled requests
+        xhrSetup: function(xhr: XMLHttpRequest) {
+          xhr.timeout = 5000 * timeoutMultiplier; // 5s desktop, 2.5s mobile
+        },
+      });
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📶 HLS config for ${networkSpeed} network:`, bufferSettings);
+      }
+
+      hlsRef.current = hls;
+
+      hls.on(HlsClass.Events.MEDIA_ATTACHED, () => {
+        hls.loadSource(videoUrl);
+      });
+
+      hls.on(HlsClass.Events.MANIFEST_PARSED, () => {
+        const loadTime = performance.now() - preloadStartTimeRef.current;
+        if (process.env.NODE_ENV === 'development') {
+          if (shouldPreload && !isActive) {
+            console.log(`✅ Video preloaded in ${loadTime.toFixed(0)}ms`);
+          } else {
+            console.log(`✅ HLS manifest parsed in ${loadTime.toFixed(0)}ms`);
+          }
+        }
+        // Don't set isLoading to false here - wait for canplay event
+        setError(null);
+      });
+      
+      hls.on(HlsClass.Events.FRAG_LOADED, () => {
+        // First fragment loaded - video should be ready soon
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📦 HLS fragment loaded');
+        }
+      });
+
+      hls.on(HlsClass.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          const errorMsg = `HLS Error: ${data.type} - ${data.details}`;
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.error('❌ HLS Fatal Error:', data);
+          }
+          
+          setError(errorMsg);
+          setIsLoading(false);
+          
+          // Report error
+          reportVideoError(data.type, retryCount, false);
+          
+          // Handle specific error types
+          if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) {
+            // Network errors - retry
+            retryVideo();
+          } else if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) {
+            // Media errors - try to recover
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔄 Attempting media error recovery...');
+            }
+            hls.recoverMediaError();
+          } else if (data.details === 'manifestLoadError' || data.details === 'manifestParsingError') {
+            // Manifest errors - retry with delay
+            if (process.env.NODE_ENV === 'development') {
+              console.log('📋 Manifest error - retrying...');
+            }
+            retryVideo();
+          } else {
+            // Other fatal errors - show poster and allow manual retry
+            if (process.env.NODE_ENV === 'development') {
+              console.log('❌ Non-recoverable error - showing poster');
+            }
+            setShowPoster(true);
+          }
+        }
+      });
+
+      hls.attachMedia(video);
+    };
+    
+    // Start HLS setup (async)
+    setupHls();
 
     return () => {
       if (retryTimeoutRef.current) {
@@ -687,6 +708,7 @@ function VideoPlayer({
               <button
                 onClick={handleManualRetry}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
+                aria-label="Retry loading video"
               >
                 Tap to Retry
               </button>
@@ -707,6 +729,15 @@ function VideoPlayer({
         <div 
           className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer z-30"
           onClick={handleVideoClick}
+          role="button"
+          aria-label="Play video"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleVideoClick();
+            }
+          }}
         >
           <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center hover:scale-110 transition-transform active:scale-95">
             <Play className="w-10 h-10 text-white fill-white ml-1" />

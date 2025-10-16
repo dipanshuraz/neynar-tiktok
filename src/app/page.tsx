@@ -8,6 +8,9 @@ export default async function Home() {
   // Fetch initial videos server-side for SSR
   // This allows the first video to render without JavaScript
   const initialData = await fetchInitialVideos();
+  
+  // Get first video thumbnail for early preload
+  const firstVideoThumbnail = initialData.videos[0]?.videos[0]?.thumbnail;
 
   return (
     <main className="relative bg-black">
@@ -18,10 +21,13 @@ export default async function Home() {
         initialHasMore={initialData.hasMore}
       />
 
-      {/* Invisible preload hints for better performance */}
+      {/* Resource hints for better performance */}
       <div className="hidden">
         <link rel="preload" href="/default-avatar.png" as="image" />
         <link rel="preload" href="/default-channel.png" as="image" />
+        {firstVideoThumbnail && (
+          <link rel="preload" href={firstVideoThumbnail} as="image" />
+        )}
       </div>
     </main>
   );

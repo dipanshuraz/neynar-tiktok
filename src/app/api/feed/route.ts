@@ -224,6 +224,14 @@ export async function GET(request: NextRequest) {
       paginatedItems = allVideoItems;
       nextCursor = neynarData.next?.cursor;
       hasMore = !!nextCursor;
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📊 Neynar pagination details:`);
+        console.log(`   - Requested limit: ${limit}`);
+        console.log(`   - Casts returned: ${neynarData.casts?.length || 0}`);
+        console.log(`   - Videos extracted: ${allVideoItems.length}`);
+        console.log(`   - Next cursor present: ${!!nextCursor}`);
+      }
     }
 
     console.log(`✅ Returning ${paginatedItems.length} videos`);
