@@ -595,14 +595,14 @@ export default function VideoFeed({
       {isMobile && (
         <div 
           ref={containerRef}
-          className="h-screen overflow-y-auto snap-y snap-proximity"
+          className="h-screen overflow-y-auto snap-y snap-mandatory"
           style={{ 
             scrollbarWidth: 'none', 
             msOverflowStyle: 'none',
             willChange: 'scroll-position',
             WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
             transform: 'translateZ(0)', // Hardware acceleration
-            scrollSnapStop: 'normal', // Allow smooth swiping through multiple videos
+            scrollSnapStop: 'always', // Force stop at each video - one video per swipe
           }}
         >
           <style jsx>{`
@@ -629,7 +629,7 @@ export default function VideoFeed({
                   else videoRefs.current.delete(index);
                 }}
                 data-index={index}
-                className="h-screen w-full snap-start snap-always"
+                className="h-screen w-full snap-start"
                 style={{
                   contain: 'layout style paint',
                   contentVisibility: isInRange ? 'visible' : 'auto',
@@ -637,6 +637,8 @@ export default function VideoFeed({
                   willChange: isInRange ? 'transform' : 'auto',
                   backfaceVisibility: 'hidden',
                   transform: 'translate3d(0,0,0)', // Force GPU acceleration
+                  scrollSnapStop: 'always', // Force stop at this element
+                  scrollSnapAlign: 'start', // Snap to the start of this element
                 }}
               >
                 {isInRange ? (
