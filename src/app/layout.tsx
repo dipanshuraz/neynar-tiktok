@@ -3,6 +3,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -10,7 +11,12 @@ const inter = Inter({
   display: 'swap',
 });
 
+// Fix metadataBase for proper social sharing URLs
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+                (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+
 export const metadata: Metadata = {
+  metadataBase: new URL(baseUrl),
   title: 'Farcaster Video Feed | TikTok-style Vertical Videos',
   description: 'Discover and watch videos from the Farcaster decentralized social network in a beautiful TikTok-style vertical feed.',
   keywords: 'Farcaster, decentralized social, video feed, TikTok, vertical videos, Neynar, Web3',
@@ -58,7 +64,9 @@ export default function RootLayout({
         <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="anonymous" />
       </head>
       <body className={`${inter.variable} font-sans h-full overflow-hidden antialiased`}>
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
       </body>
     </html>
   );

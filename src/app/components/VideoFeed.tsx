@@ -6,6 +6,7 @@ import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import VideoFeedItemComponent from './VideoFeedItem';
 import VideoFeedItemSSR from './VideoFeedItemSSR';
+import { KeyboardHint } from './KeyboardHint';
 import { VideoFeedItem } from '@/types/neynar';
 import { rafThrottle } from '../utils/taskScheduler';
 import { useFirstInteraction, measureFirstInputDelay } from '../hooks/useFirstInteraction';
@@ -50,22 +51,30 @@ export default function VideoFeed({
   const [restoringPosition, setRestoringPosition] = useState(false); // Track if restoring saved position
   const [isHydrated, setIsHydrated] = useState(false); // Track if client has hydrated (for SSR)
   
-  // Debug: Log initial state
+  // Debug: Log initial state - ONLY RUN ONCE
+  const hasMountedRef = useRef(false);
   useEffect(() => {
-    console.log('🎬 VideoFeed mounted:', {
-      initialVideosCount: initialVideos.length,
-      videosCount: videos.length,
-      loading,
-      hasMore,
-      nextCursor: nextCursor?.substring(0, 15) + '...',
-    });
+    if (hasMountedRef.current) return;
+    hasMountedRef.current = true;
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🎬 VideoFeed mounted:', {
+        initialVideosCount: initialVideos.length,
+        videosCount: videos.length,
+        loading,
+        hasMore,
+        nextCursor: nextCursor?.substring(0, 15) + '...',
+      });
+    }
     
     // Emergency fallback: If SSR returned empty and we're not loading, start loading
     if (initialVideos.length === 0 && !loading && videos.length === 0) {
-      console.log('⚠️ SSR returned empty, triggering client-side fetch...');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⚠️ SSR returned empty, triggering client-side fetch...');
+      }
       setLoading(true);
     }
-  }, []);
+  }, [initialVideos.length, loading, videos.length, hasMore, nextCursor]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -308,10 +317,14 @@ export default function VideoFeed({
     }
   }, [fetchVideos, initialVideos.length, preferences.lastVideoIndex, preferences.lastCursor]);
 
+  // Race condition protection: use ref for synchronous state check
+  const loadingMoreRef = useRef(false);
+  
   const loadMoreVideos = useCallback(async () => {
-    if (!hasMore || loadingMore || !nextCursor) {
+    // Synchronous check to prevent race conditions
+    if (!hasMore || loadingMoreRef.current || !nextCursor) {
       if (process.env.NODE_ENV === 'development') {
-        console.log('⏸️ Load more skipped:', { hasMore, loadingMore, hasCursor: !!nextCursor });
+        console.log('⏸️ Load more skipped:', { hasMore, loadingMore: loadingMoreRef.current, hasCursor: !!nextCursor });
       }
       return;
     }
@@ -320,6 +333,7 @@ export default function VideoFeed({
       if (process.env.NODE_ENV === 'development') {
         console.log(`📥 Loading more videos with cursor: ${nextCursor.substring(0, 20)}...`);
       }
+      loadingMoreRef.current = true;
       setLoadingMore(true);
       const data = await fetchVideos(nextCursor);
       
@@ -348,9 +362,10 @@ export default function VideoFeed({
       console.error('❌ Load more error:', err);
       setHasMore(false); // Prevent infinite retry
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [fetchVideos, hasMore, loadingMore, nextCursor]);
+  }, [fetchVideos, hasMore, nextCursor]);
 
   // Intersection observer - with debouncing for quick swipes
   useEffect(() => {
@@ -434,7 +449,8 @@ export default function VideoFeed({
         observerRef.current.disconnect();
         observerRef.current = null;
       }
-      videoRefs.current.clear();
+      // Don't clear all refs - only disconnect observer
+      // Refs will be cleaned up naturally as components unmount
     };
   }, [isMobile, videos.length, loadMoreVideos, setLastVideoIndex]);
 
@@ -564,6 +580,9 @@ export default function VideoFeed({
 
   return (
     <div className="relative bg-black">
+      {/* Keyboard navigation hint */}
+      {isMobile && <KeyboardHint />}
+      
       {isMobile && (
         <div 
           ref={containerRef}
