@@ -544,9 +544,9 @@ export default function VideoFeed({
             div::-webkit-scrollbar { display: none; }
           `}</style>
           
-          {/* Virtual scrolling: Render visible + adjacent videos */}
+          {/* Virtual scrolling: Keep only 3-5 video DOM nodes mounted */}
           {videos.map((video, index) => {
-            const isInRange = Math.abs(index - currentIndex) <= 4; // Keep 4 before/after loaded for smoother scrolling
+            const isInRange = Math.abs(index - currentIndex) <= 2; // Keep 2 before/after = 5 videos max (current + 2 before + 2 after)
             // Network-aware preloading: adapts based on connection speed
             const shouldPreload = shouldPreloadVideo(currentIndex, index, networkInfo);
             
