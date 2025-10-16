@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChevronUp, ChevronDown, Space } from 'lucide-react';
 
 export function KeyboardHint() {
   const [show, setShow] = useState(false);
