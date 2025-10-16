@@ -51,8 +51,11 @@ export default function VideoFeed({
   const [restoringPosition, setRestoringPosition] = useState(false); // Track if restoring saved position
   const [isHydrated, setIsHydrated] = useState(false); // Track if client has hydrated (for SSR)
   
-  // Debug: Log initial state on mount ONLY
+  // Signal page is ready for browser tab (mark as hydrated immediately)
   useEffect(() => {
+    // Mark as hydrated on mount to signal browser the page is ready
+    setIsHydrated(true);
+    
     if (process.env.NODE_ENV === 'development') {
       console.log('🎬 VideoFeed mounted:', {
         initialVideosCount: initialVideos.length,
@@ -505,11 +508,18 @@ export default function VideoFeed({
     }
     
     // Wait for preferences to load before deciding what to fetch
+    // But don't wait forever - timeout after 2 seconds
     if (!preferencesLoaded) {
       if (process.env.NODE_ENV === 'development') {
         console.log('⏳ Waiting for preferences to load...');
       }
-      return;
+      const timeout = setTimeout(() => {
+        if (!preferencesLoaded) {
+          console.warn('⚠️ Preferences took too long to load, proceeding anyway...');
+          loadInitialVideos();
+        }
+      }, 2000);
+      return () => clearTimeout(timeout);
     }
     
     if (process.env.NODE_ENV === 'development') {
