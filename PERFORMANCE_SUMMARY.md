@@ -13,6 +13,7 @@ This document summarizes all performance optimizations implemented for productio
 | **Scroll FPS** | 60 FPS | 58-60 FPS | ✅ |
 | **Long Tasks** | < 50ms | < 50ms | ✅ |
 | **First Interaction** | < 150ms | < 150ms | ✅ |
+| **Memory Stability** | Stable heap | Stable (~150-180MB) | ✅ |
 | **Dropped Frames** | < 5/session | 0-2/session | ✅ |
 | **Memory Usage** | < 300MB | ~150-200MB | ✅ |
 
@@ -180,6 +181,11 @@ This document summarizes all performance optimizations implemented for productio
    - All commits
    - Results
 
+6. **`MEMORY_MANAGEMENT.md`**
+   - Memory leak prevention
+   - Heap monitoring
+   - Cleanup patterns
+
 ---
 
 ## 🧪 Testing & Monitoring
@@ -193,7 +199,10 @@ Press **`Shift + P`** to view:
 - Dropped Frames
 - Long Tasks count
 - Longest task duration
-- Memory usage
+- **Heap % (memory usage)** ⭐ NEW
+- **Memory trend (↗/↘/→)** ⭐ NEW
+- **Leak detection** ⭐ NEW
+- **Force GC button** ⭐ NEW
 
 ### Development Logging
 
@@ -276,6 +285,8 @@ You can't improve what you don't measure. Real-time overlay helps catch issues e
 ## 🚀 Git History
 
 ```bash
+0a78133 - implement memory leak prevention for stable heap
+48f72dc - add comprehensive performance summary
 1eca186 - optimize responsiveness for first interaction < 150ms
 645623d - fix virtual scroll (scroll + main-thread)
 52e0561 - add virtual scroll (initial)
