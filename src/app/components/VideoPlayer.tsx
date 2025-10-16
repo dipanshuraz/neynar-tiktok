@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { ProcessedVideo } from '@/types/neynar';
 import { Play, Volume2, VolumeX, AlertCircle } from 'lucide-react';
 import Hls from 'hls.js';
+import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
 
 interface VideoPlayerProps {
   videos: ProcessedVideo[];
@@ -28,6 +29,9 @@ function VideoPlayer({
   const [showPlayButton, setShowPlayButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Track memory usage in development
+  useComponentMemoryTracking('VideoPlayer');
 
   const currentVideo = videos?.[0];
 
@@ -113,8 +117,16 @@ function VideoPlayer({
 
     return () => {
       if (hlsRef.current) {
+        // Proper cleanup to prevent memory leaks
+        hlsRef.current.detachMedia();
         hlsRef.current.destroy();
         hlsRef.current = null;
+      }
+      
+      // Clear video source
+      if (videoRef.current) {
+        videoRef.current.src = '';
+        videoRef.current.load();
       }
     };
   }, [currentVideo?.url, isActive]); // Depend on URL and isActive

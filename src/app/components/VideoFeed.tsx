@@ -8,6 +8,7 @@ import VideoFeedItemComponent from './VideoFeedItem';
 import { VideoFeedItem } from '@/types/neynar';
 import { rafThrottle } from '../utils/taskScheduler';
 import { useFirstInteraction, measureFirstInputDelay } from '../hooks/useFirstInteraction';
+import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
 
 // Lazy load non-critical components for faster initial load
 const DesktopVideoFeed = lazy(() => import('./DesktopVideoFeed'));
@@ -36,6 +37,9 @@ export default function VideoFeed() {
   
   // Track first interaction timing
   const firstInteraction = useFirstInteraction();
+  
+  // Track memory usage
+  useComponentMemoryTracking('VideoFeed');
   
   // Memoize toggle functions to prevent re-renders
   const handleMuteToggle = useCallback(() => {
@@ -161,7 +165,10 @@ export default function VideoFeed() {
     return () => {
       if (observerRef.current) {
         observerRef.current.disconnect();
+        observerRef.current = null;
       }
+      // Clear video refs to allow GC
+      videoRefs.current.clear();
     };
   }, [isMobile, videos.length, hasMore, loadingMore, loadMoreVideos]);
 

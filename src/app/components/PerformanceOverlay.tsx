@@ -4,6 +4,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useLongTaskMonitor } from '../hooks/useLongTaskMonitor';
+import { useMemoryMonitor, formatBytes, triggerGC } from '../hooks/useMemoryMonitor';
 
 interface PerformanceStats {
   fps: number;
@@ -22,6 +23,7 @@ export default function PerformanceOverlay() {
   });
   const [isVisible, setIsVisible] = useState(true);
   const longTaskStats = useLongTaskMonitor(50);
+  const memoryMetrics = useMemoryMonitor(5000, 5); // Check every 5s, leak threshold 5
   const fpsHistoryRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
@@ -180,6 +182,56 @@ export default function PerformanceOverlay() {
             </div>
           )}
         </div>
+
+        {/* Memory Section */}
+        {memoryMetrics && (
+          <>
+            <div className="h-px bg-white/10 my-2" />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60">Heap:</span>
+                <span className={`font-bold text-[10px] ${
+                  memoryMetrics.isLeaking ? 'text-red-400' :
+                  memoryMetrics.percentage > 80 ? 'text-yellow-400' : 'text-green-400'
+                }`}>
+                  {memoryMetrics.percentage}%
+                </span>
+              </div>
+              
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60 text-[10px]">Used:</span>
+                <span className="text-white text-[9px]">
+                  {formatBytes(memoryMetrics.usedHeapSize)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60 text-[10px]">Trend:</span>
+                <span className={`text-[9px] ${
+                  memoryMetrics.trend === 'increasing' ? 'text-red-400' :
+                  memoryMetrics.trend === 'decreasing' ? 'text-green-400' : 'text-white'
+                }`}>
+                  {memoryMetrics.trend === 'increasing' ? '↗' : 
+                   memoryMetrics.trend === 'decreasing' ? '↘' : '→'}
+                </span>
+              </div>
+
+              {memoryMetrics.isLeaking && (
+                <div className="text-red-400 text-[9px] font-bold">
+                  ⚠️ Leak detected!
+                </div>
+              )}
+
+              {/* GC Button */}
+              <button
+                onClick={() => triggerGC()}
+                className="w-full mt-2 px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-[9px] text-white transition-colors"
+              >
+                🗑️ Force GC
+              </button>
+            </div>
+          </>
+        )}
       </div>
       
       {/* FPS Bar */}
