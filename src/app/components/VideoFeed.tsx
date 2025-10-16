@@ -122,42 +122,63 @@ export default function VideoFeed() {
     }
   }, [fetchVideos, hasMore, loadingMore, nextCursor]);
 
-  // Intersection observer - optimized for performance with React 18 transitions
+  // Intersection observer - with debouncing for quick swipes
   useEffect(() => {
     if (!isMobile || !containerRef.current || videos.length === 0) return;
 
     const container = containerRef.current;
+    let pendingUpdate: number | null = null;
+    let lastActivatedIndex = -1;
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        // Use requestAnimationFrame to batch updates
-        requestAnimationFrame(() => {
-          entries.forEach((entry) => {
-            // Lower threshold for mobile responsiveness - trigger at 30% visible
-            if (entry.isIntersecting && entry.intersectionRatio > 0.3) {
-              const index = parseInt(entry.target.getAttribute('data-index') || '0');
-              
-              // Use startTransition for non-urgent updates
-              startTransition(() => {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log(`👁️ Video ${index + 1} is active (ratio: ${entry.intersectionRatio.toFixed(2)})`);
-                }
-                setCurrentIndex(index);
-              });
-              
-              // Load more videos if needed (urgent)
-              if (index >= videos.length - 2 && hasMore && !loadingMore) {
-                loadMoreVideos();
-              }
+        // Find the most visible video
+        let mostVisible = { index: -1, ratio: 0 };
+        
+        entries.forEach((entry) => {
+          // Require 60% visibility for more stability during quick swipes
+          if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
+            const index = parseInt(entry.target.getAttribute('data-index') || '0');
+            if (entry.intersectionRatio > mostVisible.ratio) {
+              mostVisible = { index, ratio: entry.intersectionRatio };
             }
-          });
+          }
         });
+
+        // Clear any pending update to restart debounce timer
+        if (pendingUpdate) {
+          clearTimeout(pendingUpdate);
+        }
+
+        // Only activate if we found a clearly visible video and it's different from last
+        if (mostVisible.index >= 0 && mostVisible.index !== lastActivatedIndex) {
+          // Debounce: wait 300ms for scrolling to settle before activating
+          // This prevents rapid video switching during quick swipes
+          pendingUpdate = window.setTimeout(() => {
+            lastActivatedIndex = mostVisible.index;
+            
+            // Use startTransition for non-urgent updates
+            startTransition(() => {
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`👁️ Video ${mostVisible.index + 1} activated (ratio: ${mostVisible.ratio.toFixed(2)})`);
+              }
+              setCurrentIndex(mostVisible.index);
+            });
+            
+            // Load more videos if needed (urgent)
+            if (mostVisible.index >= videos.length - 2 && hasMore && !loadingMore) {
+              loadMoreVideos();
+            }
+            
+            pendingUpdate = null;
+          }, 300); // Increased from 150ms to 300ms for better stability
+        }
       },
       {
         root: container,
-        threshold: [0, 0.3, 0.5, 0.8, 1.0], // Multiple thresholds for better mobile detection
+        threshold: [0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], // Higher thresholds for clearer visibility
         // Add rootMargin to preload adjacent videos
-        rootMargin: '100% 0px',
+        rootMargin: '30% 0px', // Further reduced to prevent premature loading during quick swipes
       }
     );
 
@@ -168,6 +189,9 @@ export default function VideoFeed() {
     });
 
     return () => {
+      if (pendingUpdate) {
+        clearTimeout(pendingUpdate);
+      }
       if (observerRef.current) {
         observerRef.current.disconnect();
         observerRef.current = null;

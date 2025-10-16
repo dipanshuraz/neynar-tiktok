@@ -78,11 +78,27 @@ function VideoPlayer({
   useEffect(() => {
     const shouldLoad = isActive || shouldPreload;
     
+    // Cleanup function for when component becomes inactive
+    const cleanup = () => {
+      if (hlsRef.current) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🧹 Destroying HLS due to inactive');
+        }
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      // Reset loading state when inactive
+      if (!isActive && isLoading) {
+        setIsLoading(false);
+      }
+    };
+    
     if (!videoRef.current || !currentVideo?.url || !shouldLoad) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('⏳ Waiting for video element...', { 
-          hasRef: !!videoRef.current, 
-          hasUrl: !!currentVideo?.url,
+      // Clean up if becoming inactive
+      cleanup();
+      
+      if (process.env.NODE_ENV === 'development' && videoRef.current && currentVideo?.url) {
+        console.log('⏸️ Video inactive, cleaning up...', { 
           isActive,
           shouldPreload 
         });
@@ -107,13 +123,7 @@ function VideoPlayer({
     setError(null);
 
     // Clean up previous
-    if (hlsRef.current) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🧹 Destroying previous HLS');
-      }
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
+    cleanup();
 
     // Safari native HLS
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -212,14 +222,27 @@ function VideoPlayer({
         // Report error
         reportVideoError(data.type, retryCount, false);
         
-        // Attempt retry for recoverable errors
+        // Handle specific error types
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          // Network errors - retry
           retryVideo();
         } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          // Try to recover from media errors
+          // Media errors - try to recover
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔄 Attempting media error recovery...');
+          }
           hls.recoverMediaError();
+        } else if (data.details === 'manifestLoadError' || data.details === 'manifestParsingError') {
+          // Manifest errors - retry with delay
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📋 Manifest error - retrying...');
+          }
+          retryVideo();
         } else {
-          // Non-recoverable error - show poster
+          // Other fatal errors - show poster and allow manual retry
+          if (process.env.NODE_ENV === 'development') {
+            console.log('❌ Non-recoverable error - showing poster');
+          }
           setShowPoster(true);
         }
       }
