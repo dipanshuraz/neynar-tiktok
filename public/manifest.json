@@ -1,0 +1,33 @@
+{
+  "name": "Farcaster Video Feed",
+  "short_name": "Farcaster Feed",
+  "description": "TikTok-style vertical video feed for Farcaster content",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["social", "entertainment", "video"],
+  "shortcuts": [
+    {
+      "name": "Home Feed",
+      "short_name": "Feed",
+      "description": "View video feed",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/favicon.ico",
+          "sizes": "any"
+        }
+      ]
+    }
+  ]
+}
+
