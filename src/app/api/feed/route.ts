@@ -119,11 +119,20 @@ async function fetchFromNeynar(cursor?: string, fid?: string): Promise<NeynarFee
   return data;
 }
 
-async function fetchFromLocal(): Promise<NeynarFeedResponse> {
+async function fetchFromLocal(fid?: string): Promise<NeynarFeedResponse> {
   const filePath = path.join(process.cwd(), 'data', 'casts-1.json');
   const fileContents = await fs.readFile(filePath, 'utf8');
   const data = JSON.parse(fileContents);
   console.log(`✅ Loaded ${data.casts?.length || 0} casts from local file`);
+  
+  // Filter by FID if provided
+  if (fid && data.casts) {
+    const targetFid = parseInt(fid, 10);
+    const originalCount = data.casts.length;
+    data.casts = data.casts.filter((cast: Cast) => cast.author.fid === targetFid);
+    console.log(`🔍 Filtered by FID ${fid}: ${data.casts.length}/${originalCount} casts`);
+  }
+  
   return data;
 }
 
@@ -141,7 +150,7 @@ export async function GET(request: NextRequest) {
     console.log(`Limit: ${limit}`);
     
     const neynarData = USE_LOCAL_DATA 
-      ? await fetchFromLocal() 
+      ? await fetchFromLocal(fid) 
       : await fetchFromNeynar(cursor, fid);
 
     // Extract ONLY HLS videos
