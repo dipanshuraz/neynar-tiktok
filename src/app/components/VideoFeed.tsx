@@ -314,8 +314,8 @@ export default function VideoFeed({
             // Save position with current cursor for efficient restoration
             setLastVideoIndex(mostVisible.index, videoId, nextCursor);
             
-            // Load more videos when user is 5 videos from the end for smooth experience
-            if (mostVisible.index >= videos.length - 5 && hasMore && !loadingMore) {
+            // Load more videos when user is 3 videos from the end for smooth experience
+            if (mostVisible.index >= videos.length - 3 && hasMore && !loadingMore) {
               if (process.env.NODE_ENV === 'development') {
                 console.log(`🔄 Triggering load more (${videos.length - mostVisible.index} videos remaining)`);
               }
@@ -349,7 +349,7 @@ export default function VideoFeed({
       }
       videoRefs.current.clear();
     };
-  }, [isMobile, videos.length, hasMore, loadingMore, loadMoreVideos]);
+  }, [isMobile, videos.length, hasMore, loadingMore, loadMoreVideos, nextCursor, setLastVideoIndex]);
 
   // Keyboard navigation with passive listeners
   useEffect(() => {
@@ -359,7 +359,16 @@ export default function VideoFeed({
         setCurrentIndex(currentIndex - 1);
       } else if (e.code === 'ArrowDown' && currentIndex < videos.length - 1) {
         e.preventDefault();
-        setCurrentIndex(currentIndex + 1);
+        const newIndex = currentIndex + 1;
+        setCurrentIndex(newIndex);
+        
+        // Trigger load more when keyboard navigating near end
+        if (newIndex >= videos.length - 3 && hasMore && !loadingMore) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`🔄 Keyboard navigation triggering load more`);
+          }
+          loadMoreVideos();
+        }
       } else if (e.code === 'Space') {
         e.preventDefault();
         setIsPlaying(!isPlaying);
@@ -377,7 +386,7 @@ export default function VideoFeed({
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, videos.length, isMuted, isPlaying]);
+  }, [currentIndex, videos.length, isMuted, isPlaying, hasMore, loadingMore, loadMoreVideos]);
 
   // Optimize scroll performance with throttled passive listeners
   useEffect(() => {
@@ -519,9 +528,19 @@ export default function VideoFeed({
             );
           })}
           
+          {/* Loading indicator when fetching more videos */}
           {loadingMore && (
-            <div className="h-20 flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+            <div className="h-32 flex flex-col items-center justify-center gap-3 bg-black">
+              <div className="w-8 h-8 border-3 border-white/20 border-t-white rounded-full animate-spin"></div>
+              <p className="text-white/60 text-sm">Loading more videos...</p>
+            </div>
+          )}
+          
+          {/* End of feed indicator */}
+          {!hasMore && videos.length > 0 && !loadingMore && (
+            <div className="h-32 flex flex-col items-center justify-center gap-2 bg-black">
+              <p className="text-white/60 text-sm">🎉 You've reached the end!</p>
+              <p className="text-white/40 text-xs">Swipe up to see previous videos</p>
             </div>
           )}
         </div>
