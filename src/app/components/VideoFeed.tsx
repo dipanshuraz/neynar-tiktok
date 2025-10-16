@@ -365,10 +365,11 @@ export default function VideoFeed({
             // Save position with current cursor for efficient restoration
             setLastVideoIndex(mostVisible.index, videoId, nextCursor);
             
-            // Load more videos when user is 3 videos from the end for smooth experience
-            if (mostVisible.index >= videos.length - 3 && hasMore && !loadingMore) {
+            // Load more videos when user reaches 1/3 through current videos
+            const loadMoreTrigger = Math.floor(videos.length / 3);
+            if (mostVisible.index >= loadMoreTrigger && hasMore && !loadingMore) {
               if (process.env.NODE_ENV === 'development') {
-                console.log(`🔄 Triggering load more (${videos.length - mostVisible.index} videos remaining)`);
+                console.log(`🔄 Triggering load more at ${mostVisible.index + 1}/${videos.length} (trigger: ${loadMoreTrigger + 1})`);
               }
               loadMoreVideos();
             }
@@ -413,10 +414,11 @@ export default function VideoFeed({
         const newIndex = currentIndex + 1;
         setCurrentIndex(newIndex);
         
-        // Trigger load more when keyboard navigating near end
-        if (newIndex >= videos.length - 3 && hasMore && !loadingMore) {
+        // Trigger load more when keyboard navigating past 1/3 of current videos
+        const loadMoreTrigger = Math.floor(videos.length / 3);
+        if (newIndex >= loadMoreTrigger && hasMore && !loadingMore) {
           if (process.env.NODE_ENV === 'development') {
-            console.log(`🔄 Keyboard navigation triggering load more`);
+            console.log(`🔄 Keyboard navigation triggering load more at ${newIndex + 1}/${videos.length}`);
           }
           loadMoreVideos();
         }
@@ -543,7 +545,7 @@ export default function VideoFeed({
           
           {/* Virtual scrolling: Render visible + adjacent videos */}
           {videos.map((video, index) => {
-            const isInRange = Math.abs(index - currentIndex) <= 2; // Keep 2 before/after loaded
+            const isInRange = Math.abs(index - currentIndex) <= 4; // Keep 4 before/after loaded for smoother scrolling
             // Network-aware preloading: adapts based on connection speed
             const shouldPreload = shouldPreloadVideo(currentIndex, index, networkInfo);
             
