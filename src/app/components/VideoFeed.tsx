@@ -70,33 +70,45 @@ export default function VideoFeed({
     if (videos.length === 0 || preferences.lastVideoIndex === 0) return;
     
     const savedIndex = preferences.lastVideoIndex;
+    const hasCursor = preferences.lastCursor !== null && preferences.lastCursor !== undefined;
     
-    // Calculate local index within current batch
-    // Since we load 25 videos per batch, the local index is savedIndex % 25
-    const localIndex = savedIndex % 25;
+    // Calculate target index based on whether we have a cursor
+    let targetIndex: number;
     
-    // If we have the video at that local position, restore it
-    if (localIndex < videos.length) {
+    if (hasCursor) {
+      // User was in 2nd+ batch: calculate local position within that batch
+      // Since we load 25 videos per batch, the local index is savedIndex % 25
+      targetIndex = savedIndex % 25;
       if (process.env.NODE_ENV === 'development') {
-        console.log(`📍 Restoring to local position ${localIndex} (original: ${savedIndex})`);
+        console.log(`📍 Restoring with cursor: local position ${targetIndex} (original: ${savedIndex})`);
       }
-      setCurrentIndex(localIndex);
+    } else {
+      // User was in 1st batch: saved index IS the actual index
+      targetIndex = savedIndex;
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📍 Restoring without cursor: position ${targetIndex} (first batch)`);
+      }
+    }
+    
+    // If we have the video at that position, restore it
+    if (targetIndex < videos.length) {
+      setCurrentIndex(targetIndex);
       
       // Scroll to saved position
       setTimeout(() => {
-        const savedVideo = videoRefs.current.get(localIndex);
+        const savedVideo = videoRefs.current.get(targetIndex);
         if (savedVideo && containerRef.current) {
           savedVideo.scrollIntoView({ behavior: 'auto', block: 'start' });
         }
       }, 100);
     } else {
-      // Just start from beginning of current batch
+      // Video not available, start from beginning
       if (process.env.NODE_ENV === 'development') {
-        console.log(`⚠️ Could not restore to local position ${localIndex}, starting from 0`);
+        console.log(`⚠️ Could not restore to position ${targetIndex} (only ${videos.length} videos), starting from 0`);
       }
       setCurrentIndex(0);
     }
-  }, [videos.length, preferences.lastVideoIndex]);
+  }, [videos.length, preferences.lastVideoIndex, preferences.lastCursor]);
   
   // Memoize toggle functions to prevent re-renders
   const handleMuteToggle = useCallback(() => {
@@ -142,13 +154,14 @@ export default function VideoFeed({
   }, []);
 
   const loadInitialVideos = useCallback(async () => {
-    // Check if we have a saved position with cursor
-    const hasSavedPosition = preferences.lastVideoIndex > 0 && preferences.lastCursor;
+    const hasSavedIndex = preferences.lastVideoIndex > 0;
+    const hasSavedCursor = preferences.lastCursor !== null && preferences.lastCursor !== undefined;
     
-    // If we have a saved position with cursor, fetch from that cursor (always prioritize restoration)
-    if (hasSavedPosition) {
+    // Case 1: User has saved position with cursor (was in 2nd+ batch)
+    // Fetch from that cursor to restore exact position
+    if (hasSavedIndex && hasSavedCursor) {
       if (process.env.NODE_ENV === 'development') {
-        console.log(`📍 Restoring from saved cursor: ${preferences.lastCursor!.substring(0, 20)}...`);
+        console.log(`📍 Restoring from saved cursor: ${preferences.lastCursor!.substring(0, 20)}... (index: ${preferences.lastVideoIndex})`);
       }
       
       try {
@@ -201,10 +214,48 @@ export default function VideoFeed({
       return;
     }
     
-    // No saved position - use SSR data if available
+    // Case 2: User has saved position but NO cursor (was in 1st batch, 0-24)
+    // Use SSR data or fetch from beginning, will restore position in separate effect
+    if (hasSavedIndex && !hasSavedCursor) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📍 Saved position found (index: ${preferences.lastVideoIndex}), no cursor (first batch)`);
+      }
+      
+      // Use SSR data if available, otherwise fetch from beginning
+      if (initialVideos.length > 0) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ Using ${initialVideos.length} SSR videos (will restore to index ${preferences.lastVideoIndex})`);
+        }
+        setLoading(false);
+        return;
+      } else {
+        // Fetch from beginning
+        try {
+          setLoading(true);
+          const data = await fetchVideos();
+          
+          if (!data.videos || data.videos.length === 0) {
+            setError('No videos found');
+            return;
+          }
+          
+          console.log(`✅ Loaded ${data.videos.length} videos (will restore to index ${preferences.lastVideoIndex})`);
+          setVideos(data.videos);
+          setNextCursor(data.nextCursor);
+          setHasMore(data.hasMore);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load');
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+    }
+    
+    // Case 3: No saved position - use SSR data if available
     if (initialVideos.length > 0) {
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Using ${initialVideos.length} SSR videos (no fetch needed)`);
+        console.log(`✅ Using ${initialVideos.length} SSR videos (no saved position)`);
       }
       setLoading(false);
       return;
