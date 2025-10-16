@@ -687,6 +687,8 @@ export default memo(VideoPlayer, (prevProps, nextProps) => {
   return (
     prevProps.videos[0]?.url === nextProps.videos[0]?.url &&
     prevProps.isActive === nextProps.isActive &&
-    prevProps.isMuted === nextProps.isMuted
+    prevProps.isMuted === nextProps.isMuted &&
+    prevProps.shouldPlay === nextProps.shouldPlay &&
+    prevProps.castHash === nextProps.castHash
   );
 });
