@@ -685,7 +685,7 @@ function VideoPlayer({
         playsInline
         preload="auto" // Always auto-load for instant playback
         poster={currentVideo.thumbnail} // Native poster attribute as fallback
-        fetchpriority={isActive ? 'high' : (shouldPreload ? 'high' : 'low')} // High priority for active and next videos
+        {...((isActive || shouldPreload) ? { fetchpriority: 'high' as const } : {})} // High priority for active and preloading videos
         className={`w-full h-full cursor-pointer ${isVerticalVideo ? 'object-cover' : 'object-contain'}`} // object-cover for 9:16, object-contain for others
         style={{ 
           display: showPoster ? 'none' : 'block',
