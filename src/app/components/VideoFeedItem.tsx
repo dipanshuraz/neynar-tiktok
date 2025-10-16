@@ -1,4 +1,3 @@
-// src/components/VideoFeedItem.tsx
 
 'use client';
 
@@ -75,7 +74,6 @@ function VideoFeedItemComponent({
 
   const handleComment = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    // Open Warpcast to comment
     const warpcastUrl = `https://warpcast.com/${cast.author.username}/${cast.hash.slice(0, 10)}`;
     window.open(warpcastUrl, '_blank');
   }, [cast.author.username, cast.hash]);

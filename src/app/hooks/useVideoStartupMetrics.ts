@@ -1,4 +1,3 @@
-// src/hooks/useVideoStartupMetrics.ts - Track video startup performance
 
 'use client';
 

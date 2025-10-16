@@ -1,4 +1,3 @@
-// src/app/api/feed/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
@@ -20,7 +19,6 @@ class HLSVideoParser {
       // Skip non-URL embeds
       if (!embed.url) continue;
 
-      // Check if it's an HLS video
       if (this.isHLSUrl(embed.url)) {
         console.log('✅ Found HLS video:', embed.url);
         
@@ -33,7 +31,6 @@ class HLSVideoParser {
           thumbnail: embed.metadata?.image?.url,
         });
       }
-      // Check metadata for HLS
       else if (embed.metadata?.video) {
         const videoUrl = embed.metadata.video.stream?.stream_url || 
                         embed.metadata.video.url || 
@@ -86,7 +83,6 @@ function processHLSVideoFeed(casts: Cast[]): VideoFeedItem[] {
   return videoItems;
 }
 
-// Fetch from Neynar API
 async function fetchFromNeynar(cursor?: string, fid?: string): Promise<NeynarFeedResponse> {
   if (!NEYNAR_API_KEY) {
     throw new Error('NEXT_PUBLIC_NEYNAR_API_KEY is not configured');
@@ -123,7 +119,6 @@ async function fetchFromNeynar(cursor?: string, fid?: string): Promise<NeynarFee
   return data;
 }
 
-// Fetch from local file
 async function fetchFromLocal(): Promise<NeynarFeedResponse> {
   const filePath = path.join(process.cwd(), 'data', 'casts-1.json');
   const fileContents = await fs.readFile(filePath, 'utf8');
@@ -145,7 +140,6 @@ export async function GET(request: NextRequest) {
     console.log(`Cursor: ${cursor || 'none'}`);
     console.log(`Limit: ${limit}`);
     
-    // Fetch data
     const neynarData = USE_LOCAL_DATA 
       ? await fetchFromLocal() 
       : await fetchFromNeynar(cursor, fid);

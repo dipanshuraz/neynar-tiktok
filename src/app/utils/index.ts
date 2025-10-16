@@ -1,4 +1,3 @@
-// src/app/utils/index.ts
 // Centralized exports for all utilities
 
 // Performance utilities

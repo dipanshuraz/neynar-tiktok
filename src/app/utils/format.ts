@@ -1,4 +1,3 @@
-// src/app/utils/format.ts
 // Formatting utilities
 
 /**

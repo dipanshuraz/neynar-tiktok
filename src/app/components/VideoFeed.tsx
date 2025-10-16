@@ -1,4 +1,3 @@
-// src/components/VideoFeed.tsx - SIMPLIFIED VERSION
 
 'use client';
 
@@ -36,7 +35,6 @@ export default function VideoFeed({
   // Playback preferences (mute state, last position)
   const { preferences, setMuted, setLastVideoIndex } = usePlaybackPreferences();
   
-  // Initialize with SSR data for instant first render
   const [videos, setVideos] = useState<VideoFeedItem[]>(initialVideos);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(initialVideos.length === 0); // Not loading if we have SSR data
@@ -192,7 +190,6 @@ export default function VideoFeed({
           }
         });
 
-        // Clear any pending update to restart debounce timer
         if (pendingUpdate) {
           clearTimeout(pendingUpdate);
         }
@@ -211,12 +208,10 @@ export default function VideoFeed({
               }
               setCurrentIndex(mostVisible.index);
               
-              // Save position to preferences (with video ID if available)
               const videoId = videos[mostVisible.index]?.id;
               setLastVideoIndex(mostVisible.index, videoId);
             });
             
-            // Load more videos if needed (urgent)
             if (mostVisible.index >= videos.length - 2 && hasMore && !loadingMore) {
               loadMoreVideos();
             }
@@ -228,7 +223,6 @@ export default function VideoFeed({
       {
         root: container,
         threshold: [0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], // Higher thresholds for clearer visibility
-        // Add rootMargin to preload adjacent videos
         rootMargin: '30% 0px', // Further reduced to prevent premature loading during quick swipes
       }
     );
@@ -247,7 +241,6 @@ export default function VideoFeed({
         observerRef.current.disconnect();
         observerRef.current = null;
       }
-      // Clear video refs to allow GC
       videoRefs.current.clear();
     };
   }, [isMobile, videos.length, hasMore, loadingMore, loadMoreVideos]);

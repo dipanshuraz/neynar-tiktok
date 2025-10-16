@@ -1,4 +1,3 @@
-// src/utils/taskScheduler.ts - Break up long tasks for smooth rendering
 
 /**
  * Yields to the main thread to prevent blocking

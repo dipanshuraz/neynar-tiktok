@@ -1,4 +1,3 @@
-// src/app/utils/hls.ts
 // HLS.js utilities and configuration
 
 import Hls from 'hls.js';
@@ -56,7 +55,6 @@ export function createHLSInstance(
       : VIDEO.RETRY.FRAGMENT_MAX_RETRY_NORMAL,
     fragLoadingRetryDelay: VIDEO.RETRY.RETRY_DELAY_MS,
     
-    // Start playback ASAP
     liveSyncDurationCount: 1,
     liveMaxLatencyDurationCount: 3,
     
@@ -80,7 +78,6 @@ export function loadHLSSource(
   // Attach media element
   hls.attachMedia(videoElement);
   
-  // Load source
   hls.on(Hls.Events.MEDIA_ATTACHED, () => {
     if (DEV.ENABLE_CONSOLE_LOGS) {
       console.log('📺 HLS media attached');

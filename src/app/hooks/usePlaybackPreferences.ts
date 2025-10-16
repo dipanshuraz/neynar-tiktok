@@ -1,4 +1,3 @@
-// src/app/hooks/usePlaybackPreferences.ts
 // Persist playback preferences in localStorage
 
 'use client';
@@ -45,7 +44,6 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
   const [preferences, setPreferences] = useState<PlaybackPreferences>(DEFAULT_PREFERENCES);
   const [isClient, setIsClient] = useState(false);
 
-  // Load preferences from localStorage on mount
   useEffect(() => {
     setIsClient(true);
     
@@ -73,7 +71,6 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
     }
   }, []);
 
-  // Save mute state
   const setMuted = useCallback((muted: boolean) => {
     if (!isClient) return;
     
@@ -89,7 +86,6 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
     }
   }, [isClient]);
 
-  // Save last video position
   const setLastVideoIndex = useCallback((index: number, videoId?: string) => {
     if (!isClient) return;
     
@@ -113,7 +109,6 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
     }
   }, [isClient]);
 
-  // Save playback speed
   const setPlaybackSpeed = useCallback((speed: number) => {
     if (!isClient) return;
     
@@ -129,7 +124,6 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
     }
   }, [isClient]);
 
-  // Save volume
   const setVolume = useCallback((volume: number) => {
     if (!isClient) return;
     
@@ -146,7 +140,6 @@ export function usePlaybackPreferences(): UsePlaybackPreferencesReturn {
     }
   }, [isClient]);
 
-  // Clear all preferences
   const clearPreferences = useCallback(() => {
     if (!isClient) return;
     

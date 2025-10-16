@@ -1,4 +1,3 @@
-// src/components/PerformanceOverlay.tsx - FPS Monitor for Development
 
 'use client';
 
@@ -63,7 +62,6 @@ export default function PerformanceOverlay() {
         if (fps < minFps) minFps = fps;
         if (fps < 58) droppedFrames++;
 
-        // Get memory usage if available
         let memoryUsage: string | undefined;
         if ('memory' in performance) {
           const memory = (performance as any).memory;

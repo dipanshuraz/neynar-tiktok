@@ -1,4 +1,3 @@
-// src/components/VideoPlayer.tsx - PERFORMANCE OPTIMIZED
 
 'use client';
 
@@ -87,7 +86,6 @@ function VideoPlayer({
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      // Reset loading state when inactive
       if (!isActive && isLoading) {
         setIsLoading(false);
       }
@@ -144,7 +142,6 @@ function VideoPlayer({
       return;
     }
 
-    // Get network-aware buffer settings
     const bufferSettings = getHLSBufferSettings(networkSpeed);
     
     // Aggressive timeouts for mobile to prevent long waits
@@ -169,7 +166,6 @@ function VideoPlayer({
       fragLoadingTimeOut: 10000 * timeoutMultiplier, // 10s desktop, 5s mobile
       fragLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2,
       fragLoadingRetryDelay: 500,
-      // Start playback ASAP
       liveSyncDurationCount: 1,
       liveMaxLatencyDurationCount: 3,
       // Abort controller for stalled requests
@@ -251,7 +247,6 @@ function VideoPlayer({
     hls.attachMedia(video);
 
     return () => {
-      // Clear any pending retry timeouts
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
@@ -264,7 +259,6 @@ function VideoPlayer({
         hlsRef.current = null;
       }
       
-      // Clear video source
       if (videoRef.current) {
         videoRef.current.src = '';
         videoRef.current.load();

@@ -1,4 +1,3 @@
-// src/app/hooks/index.ts
 // Centralized exports for all custom hooks
 
 // Performance hooks

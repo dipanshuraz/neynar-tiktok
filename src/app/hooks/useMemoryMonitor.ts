@@ -1,4 +1,3 @@
-// src/hooks/useMemoryMonitor.ts - Monitor memory usage and detect leaks
 
 'use client';
 
@@ -29,7 +28,6 @@ export function useMemoryMonitor(
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Check if memory API is available
     if (!('memory' in performance)) {
       if (process.env.NODE_ENV === 'development') {
         console.warn('Memory API not available. Use Chrome with --enable-precise-memory-info flag');

@@ -1,4 +1,3 @@
-// src/hooks/useFirstInteraction.ts - Track first interaction timing
 
 'use client';
 

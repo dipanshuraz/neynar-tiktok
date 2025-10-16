@@ -1,4 +1,3 @@
-// src/components/DesktopVideoFeed.tsx
 
 'use client';
 

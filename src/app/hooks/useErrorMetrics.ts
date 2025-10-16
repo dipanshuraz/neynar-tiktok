@@ -1,4 +1,3 @@
-// src/hooks/useErrorMetrics.ts - Track video loading errors and retries
 
 'use client';
 

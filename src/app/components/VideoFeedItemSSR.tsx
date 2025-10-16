@@ -1,4 +1,3 @@
-// src/app/components/VideoFeedItemSSR.tsx
 // Server-Side Rendered version of VideoFeedItem (static HTML, no interactivity until hydration)
 
 import { VideoFeedItem } from '@/types/neynar';

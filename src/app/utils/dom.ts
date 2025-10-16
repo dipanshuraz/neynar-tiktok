@@ -1,4 +1,3 @@
-// src/app/utils/dom.ts
 // DOM manipulation and detection utilities
 
 import { UI } from '../config/constants';

@@ -1,4 +1,3 @@
-// src/hooks/useNetworkQuality.ts - Monitor network quality and adapt behavior
 
 'use client';
 
@@ -44,7 +43,6 @@ export function useNetworkQuality(): NetworkInfo {
       if (now - lastUpdateRef.current < 5000) return;
       lastUpdateRef.current = now;
 
-      // Check if Network Information API is available
       const connection = (navigator as any).connection || 
                         (navigator as any).mozConnection || 
                         (navigator as any).webkitConnection;
@@ -230,12 +228,10 @@ export function shouldPreloadVideo(
   const distance = videoIndex - currentIndex;
   const absDistance = Math.abs(distance);
 
-  // Check if within preload range
   if (absDistance === 0 || absDistance > maxPreloadCount) {
     return false;
   }
 
-  // Check direction
   if (preloadDirection === 'forward') {
     return distance > 0; // Only preload videos ahead
   } else {

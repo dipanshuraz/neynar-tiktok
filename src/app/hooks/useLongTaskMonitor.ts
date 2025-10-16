@@ -1,4 +1,3 @@
-// src/hooks/useLongTaskMonitor.ts - Monitor and report long tasks
 
 'use client';
 
@@ -51,7 +50,6 @@ export function useLongTaskMonitor(threshold: number = 50) {
                 longTasks.shift();
               }
               
-              // Update stats
               const totalDuration = longTasks.reduce((sum, t) => sum + t.duration, 0);
               const maxDuration = Math.max(...longTasks.map(t => t.duration));
               

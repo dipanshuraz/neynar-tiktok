@@ -1,4 +1,3 @@
-// src/utils/performance.ts
 // Web Vitals types (optional dependency)
 type Metric = {
   name: string;
