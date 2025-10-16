@@ -395,15 +395,16 @@ function VideoPlayer({
     };
   }, [currentVideo?.url, isActive, shouldPreload, networkSpeed, retryCount, retryVideo]); // Include all dependencies
 
-  // Immediate pause when becoming inactive (prevent audio overlap)
+  // CRITICAL: Immediate pause when becoming inactive (prevent audio overlap)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (!isActive) {
-      // Immediately pause and mute to stop audio overlap
+      // IMMEDIATELY stop playback to prevent audio overlap
       video.pause();
       video.muted = true;
+      video.volume = 0; // Extra safety: set volume to 0
       
       // Stop HLS loading if using HLS
       if (hlsRef.current) {
@@ -418,19 +419,28 @@ function VideoPlayer({
       video.currentTime = 0;
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('⏸️ Video stopped immediately (inactive)');
+        console.log('⏸️ Video STOPPED immediately (inactive) - audio should be silent');
       }
-    } else if (isActive && hlsRef.current) {
+    } else if (isActive) {
       // Resume loading when active
-      try {
-        hlsRef.current.startLoad();
-      } catch (err) {
-        // Ignore errors
+      video.muted = isMuted; // Restore mute state
+      video.volume = isMuted ? 0 : 1; // Restore volume
+      
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.startLoad();
+        } catch (err) {
+          // Ignore errors
+        }
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('▶️ Video activated - ready to play');
       }
     }
-  }, [isActive]);
+  }, [isActive, isMuted]);
 
-  // Playback control
+  // Playback control - ONLY play when active
   useEffect(() => {
     const video = videoRef.current;
     
@@ -438,9 +448,19 @@ function VideoPlayer({
       return;
     }
 
-    video.muted = isMuted;
+    // CRITICAL: Ensure inactive videos are ALWAYS paused
+    if (!isActive) {
+      video.pause();
+      video.muted = true;
+      video.volume = 0;
+      return;
+    }
 
-    if (isActive && shouldPlay) {
+    // Only proceed if active
+    video.muted = isMuted;
+    video.volume = isMuted ? 0 : 1;
+
+    if (shouldPlay) {
       // Track time from entering view to playback start
       playbackStartTimeRef.current = performance.now();
       
@@ -469,7 +489,7 @@ function VideoPlayer({
           }
           // Don't block playback for other errors - let it try again
         });
-    } else if (isActive && !shouldPlay) {
+    } else {
       // Pause when shouldPlay is false (keyboard shortcut)
       video.pause();
       setShowPlayButton(true);
