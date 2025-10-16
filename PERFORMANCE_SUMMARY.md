@@ -14,6 +14,7 @@ This document summarizes all performance optimizations implemented for productio
 | **Long Tasks** | < 50ms | < 50ms | ✅ |
 | **First Interaction** | < 150ms | < 150ms | ✅ |
 | **Video Startup** | < 200ms | ~150ms | ✅ |
+| **Network Efficiency** | Adaptive 1-2 | Adaptive (0-2) | ✅ |
 | **Memory Stability** | Stable heap | Stable (~150-180MB) | ✅ |
 | **Dropped Frames** | < 5/session | 0-2/session | ✅ |
 | **Memory Usage** | < 300MB | ~150-200MB | ✅ |
@@ -121,6 +122,33 @@ This document summarizes all performance optimizations implemented for productio
 
 ---
 
+### 5. Network Efficiency (Adaptive 1-2 videos) ✅
+
+**Commit**: `ba27440 - implement adaptive network-aware preloading`
+
+**Key Changes**:
+- `useNetworkQuality` hook (Network Information API)
+- Connection detection (4g/3g/2g, Mbps, RTT, data saver)
+- Adaptive preloading strategy (0-2 videos)
+- Direction-aware preloading (none/forward/both)
+- Connection-aware HLS buffer settings
+- `shouldPreloadVideo()` smart logic
+- Network metrics in PerformanceOverlay
+- Real-time connection monitoring
+- Safari/unsupported browser fallback
+
+**Impact**:
+- Fast (>10 Mbps): 2 videos (both) - full utilization
+- Medium (1.5-10 Mbps): 1 video (forward) - balanced
+- Slow (<1.5 Mbps): 0 videos - bandwidth conserved
+- Data Saver mode: fully respected
+
+**Files Created**:
+- `src/hooks/useNetworkQuality.ts` - Network detection
+- `NETWORK_EFFICIENCY.md` - Documentation
+
+---
+
 ## 📈 Before vs After
 
 ### Before Optimizations:
@@ -144,6 +172,11 @@ This document summarizes all performance optimizations implemented for productio
    - 500-1200ms to start
    - Load only when in view
    - Noticeable lag
+
+❌ Network:
+   - Fixed preload (2 videos always)
+   - Wastes bandwidth on slow connections
+   - Ignores data saver mode
 
 ❌ Memory: 500MB+
 ```
@@ -169,6 +202,11 @@ This document summarizes all performance optimizations implemented for productio
    - 100-200ms to start
    - Adjacent preloading
    - Instant playback
+
+✅ Network:
+   - Adaptive preload (0-2 videos)
+   - Network-aware (4g/3g/2g)
+   - Respects data saver
 
 ✅ Memory: 150-200MB (stable)
 ```
@@ -227,6 +265,11 @@ This document summarizes all performance optimizations implemented for productio
    - HLS optimization
    - Startup metrics
 
+8. **`NETWORK_EFFICIENCY.md`** ⭐ NEW
+   - Adaptive preloading
+   - Network detection
+   - Bandwidth conservation
+
 ---
 
 ## 🧪 Testing & Monitoring
@@ -244,10 +287,15 @@ Press **`Shift + P`** to view:
 - **Memory trend (↗/↘/→)**
 - **Leak detection**
 - **Force GC button**
-- **Video startup time (avg)** ⭐ NEW
-- **Last startup time** ⭐ NEW
-- **Startup range (min-max)** ⭐ NEW
-- **Total startups** ⭐ NEW
+- **Video startup time (avg)**
+- **Last startup time**
+- **Startup range (min-max)**
+- **Total startups**
+- **Network speed (FAST/MEDIUM/SLOW)** ⭐ NEW
+- **Connection type (4G/3G/2G)** ⭐ NEW
+- **Download speed (Mbps)** ⭐ NEW
+- **Preload count & direction** ⭐ NEW
+- **Data saver indicator** ⭐ NEW
 
 ### Development Logging
 
