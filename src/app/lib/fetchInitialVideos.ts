@@ -17,8 +17,9 @@ export async function fetchInitialVideos(): Promise<VideoFeedResponse> {
   try {
     // Always fetch from API route (which handles local vs. remote data)
     // Use the full URL since we're on the server
+    // Fetch initial batch of 10 videos for fast SSR, more will be loaded on scroll
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const response = await fetch(`${baseUrl}/api/feed?limit=50`, {
+    const response = await fetch(`${baseUrl}/api/feed?limit=10`, {
       next: { revalidate: 60 }, // Revalidate every 60 seconds
     });
 

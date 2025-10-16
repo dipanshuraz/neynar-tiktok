@@ -158,20 +158,42 @@ export default function VideoFeed({
   }, [fetchVideos, initialVideos.length]);
 
   const loadMoreVideos = useCallback(async () => {
-    if (!hasMore || loadingMore || !nextCursor) return;
+    if (!hasMore || loadingMore || !nextCursor) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏸️ Load more skipped:', { hasMore, loadingMore, hasCursor: !!nextCursor });
+      }
+      return;
+    }
 
     try {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📥 Loading more videos with cursor: ${nextCursor.substring(0, 20)}...`);
+      }
       setLoadingMore(true);
       const data = await fetchVideos(nextCursor);
-      setVideos(prev => [...prev, ...data.videos]);
-      setNextCursor(data.nextCursor);
-      setHasMore(data.hasMore);
+      
+      if (data.videos && data.videos.length > 0) {
+        setVideos(prev => [...prev, ...data.videos]);
+        setNextCursor(data.nextCursor);
+        setHasMore(data.hasMore);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ Loaded ${data.videos.length} more videos. Total: ${videos.length + data.videos.length}`);
+          console.log(`📄 Next cursor: ${data.nextCursor ? data.nextCursor.substring(0, 20) + '...' : 'none'}`);
+        }
+      } else {
+        setHasMore(false);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🏁 No more videos available');
+        }
+      }
     } catch (err) {
-      console.error('Load more error:', err);
+      console.error('❌ Load more error:', err);
+      setHasMore(false); // Prevent infinite retry
     } finally {
       setLoadingMore(false);
     }
-  }, [fetchVideos, hasMore, loadingMore, nextCursor]);
+  }, [fetchVideos, hasMore, loadingMore, nextCursor, videos.length]);
 
   // Intersection observer - with debouncing for quick swipes
   useEffect(() => {
@@ -216,7 +238,11 @@ export default function VideoFeed({
             const videoId = videos[mostVisible.index]?.id;
             setLastVideoIndex(mostVisible.index, videoId);
             
-            if (mostVisible.index >= videos.length - 2 && hasMore && !loadingMore) {
+            // Load more videos when user is 5 videos from the end for smooth experience
+            if (mostVisible.index >= videos.length - 5 && hasMore && !loadingMore) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`🔄 Triggering load more (${videos.length - mostVisible.index} videos remaining)`);
+              }
               loadMoreVideos();
             }
             

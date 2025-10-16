@@ -72,20 +72,17 @@ Create a `.env.local` file in the root directory:
 
 ```bash
 # ============================================
-# Neynar API Configuration (Required)
+# Neynar API Configuration (Required for Production)
 # ============================================
 # Get your API key from: https://neynar.com/
 NEXT_PUBLIC_NEYNAR_API_KEY=your_neynar_api_key_here
 
-# Default Farcaster user ID to fetch videos from
-# Default: 9152 (dwr.eth - Farcaster founder)
-NEXT_PUBLIC_DEFAULT_FID=9152
-
 # ============================================
-# Development Configuration (Optional)
+# Development Configuration
 # ============================================
-# Use local cached data instead of API (for development)
-# Set to "true" to use data/casts.json file
+# Use local cached data instead of API (for development/testing)
+# Set to "true" to use data/casts-3.json file
+# Set to "false" to use real Neynar API (recommended)
 NEXT_PUBLIC_USE_DUMMY_DATA=false
 
 # Base URL for API routes (optional)
@@ -110,6 +107,23 @@ NODE_ENV=development  # or "production"
 - 1000 requests/day
 - All feed endpoints
 - No credit card required
+
+### 🎬 Unlimited Videos with Smart Pagination
+
+The app uses Neynar's `embed_types=video` filter to get **unlimited video content**:
+
+- **Initial Load**: 10 videos for fast page load
+- **Auto-Load**: Automatically fetches 25 more videos when you scroll to 5 videos from the end
+- **Cursor-Based**: Efficient pagination using Neynar's cursor system
+- **Seamless**: No loading interruptions - videos load in the background
+
+**How it works**:
+```
+User opens app → Loads 10 videos (SSR)
+User scrolls to video #6 → Loads 25 more videos in background
+User scrolls to video #31 → Loads another 25 videos
+... continues infinitely
+```
 
 ---
 

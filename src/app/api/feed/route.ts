@@ -108,23 +108,26 @@ function processVideoFeed(casts: Cast[]): VideoFeedItem[] {
   return videoItems;
 }
 
-async function fetchFromNeynar(cursor?: string, fid?: string): Promise<NeynarFeedResponse> {
+async function fetchFromNeynar(cursor?: string, limit: number = 25): Promise<NeynarFeedResponse> {
   if (!NEYNAR_API_KEY) {
     throw new Error('NEXT_PUBLIC_NEYNAR_API_KEY is not configured');
   }
 
   const url = new URL(NEYNAR_API_URL);
+  
+  // Use embed_types filter to get only video content
   url.searchParams.set('feed_type', 'filter');
-  url.searchParams.set('filter_type', 'global_trending');
+  url.searchParams.set('filter_type', 'embed_types');
+  url.searchParams.set('embed_types', 'video');
   url.searchParams.set('with_recasts', 'true');
-  url.searchParams.set('limit', '100'); // Fetch more to find HLS videos
-  url.searchParams.set('fid', fid || DEFAULT_FID);
+  url.searchParams.set('limit', limit.toString());
   
   if (cursor) {
     url.searchParams.set('cursor', cursor);
+    console.log(`🌐 Fetching from Neynar with cursor: ${cursor.substring(0, 20)}...`);
+  } else {
+    console.log(`🌐 Fetching initial videos from Neynar (limit: ${limit})...`);
   }
-
-  console.log(`🌐 Fetching from Neynar...`);
 
   const response = await fetch(url.toString(), {
     headers: {
@@ -135,17 +138,25 @@ async function fetchFromNeynar(cursor?: string, fid?: string): Promise<NeynarFee
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ Neynar API error: ${response.status} - ${errorText}`);
     throw new Error(`Neynar API error: ${response.status}`);
   }
 
   const data = await response.json();
-  console.log(`✅ Fetched ${data.casts?.length || 0} casts from Neynar`);
+  console.log(`✅ Fetched ${data.casts?.length || 0} video casts from Neynar`);
+  
+  if (data.next?.cursor) {
+    console.log(`📄 Next cursor available: ${data.next.cursor.substring(0, 20)}...`);
+  } else {
+    console.log(`🏁 No more videos available`);
+  }
   
   return data;
 }
 
 async function fetchFromLocal(fid?: string): Promise<NeynarFeedResponse> {
-  const filePath = path.join(process.cwd(), 'data', 'casts-2.json');
+  const filePath = path.join(process.cwd(), 'data', 'casts-3.json');
   const fileContents = await fs.readFile(filePath, 'utf8');
   const data = JSON.parse(fileContents);
   console.log(`✅ Loaded ${data.casts?.length || 0} casts from local file`);
@@ -156,24 +167,22 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const cursor = searchParams.get('cursor') || undefined;
-    const fid = searchParams.get('fid') || undefined;
     const limit = parseInt(searchParams.get('limit') || '25');
     
     console.log(`\n📡 === Feed API Request ===`);
     console.log(`Mode: ${USE_LOCAL_DATA ? 'LOCAL' : 'NEYNAR'}`);
-    console.log(`FID: ${fid || DEFAULT_FID}`);
     console.log(`Cursor: ${cursor || 'none'}`);
     console.log(`Limit: ${limit}`);
     
     const neynarData = USE_LOCAL_DATA 
-      ? await fetchFromLocal(fid) 
-      : await fetchFromNeynar(cursor, fid);
+      ? await fetchFromLocal() 
+      : await fetchFromNeynar(cursor, limit);
 
-    // Extract ONLY HLS videos
+    // Extract videos from casts (all video formats)
     const allVideoItems = processVideoFeed(neynarData.casts || []);
     
     if (allVideoItems.length === 0) {
-      console.warn('⚠️ No HLS videos found in the feed');
+      console.warn('⚠️ No videos found in the feed');
       
       // Log sample cast to help debug
       if (neynarData.casts && neynarData.casts.length > 0) {
@@ -190,33 +199,36 @@ export async function GET(request: NextRequest) {
         nextCursor: undefined,
         hasMore: false,
         totalFound: 0,
-        message: 'No HLS (.m3u8) videos found. Try a different feed or check your data.'
+        message: USE_LOCAL_DATA 
+          ? 'No videos found in local data. Try using NEXT_PUBLIC_USE_DUMMY_DATA=false for real API.'
+          : 'No videos found. The Neynar API might be returning empty results.'
       });
     }
 
-    // Pagination
+    // Pagination handling
     let paginatedItems = allVideoItems;
     let nextCursor: string | undefined;
     let hasMore = false;
 
     if (USE_LOCAL_DATA) {
-      // Simple pagination for local data
+      // Simple index-based pagination for local data
       const startIndex = cursor ? parseInt(cursor) : 0;
       const endIndex = startIndex + limit;
-      console.log(`📄 Pagination: startIndex=${startIndex}, endIndex=${endIndex}, total=${allVideoItems.length}, limit=${limit}`);
+      console.log(`📄 Local pagination: ${startIndex} to ${endIndex} of ${allVideoItems.length}`);
       paginatedItems = allVideoItems.slice(startIndex, endIndex);
       hasMore = endIndex < allVideoItems.length;
       nextCursor = hasMore ? endIndex.toString() : undefined;
-      console.log(`✂️ After slice: ${paginatedItems.length} items`);
     } else {
-      // For Neynar, return all found videos with original cursor
-      paginatedItems = allVideoItems.slice(0, limit);
+      // For Neynar API, use the cursor from the response
+      // Since we're using embed_types=video filter, all results should already be videos
+      paginatedItems = allVideoItems;
       nextCursor = neynarData.next?.cursor;
       hasMore = !!nextCursor;
     }
 
-    console.log(`✅ Returning ${paginatedItems.length} videos (out of ${allVideoItems.length} total)`);
-    console.log(`Has more: ${hasMore}`);
+    console.log(`✅ Returning ${paginatedItems.length} videos`);
+    console.log(`📄 Next cursor: ${nextCursor ? nextCursor.substring(0, 20) + '...' : 'none'}`);
+    console.log(`🔄 Has more: ${hasMore}`);
     
     // Log first video for debugging
     if (paginatedItems.length > 0) {
@@ -224,7 +236,8 @@ export async function GET(request: NextRequest) {
       console.log('📹 First video:', {
         author: firstVideo.cast.author.username,
         videoCount: firstVideo.videos.length,
-        firstUrl: firstVideo.videos[0]?.url,
+        videoType: firstVideo.videos[0]?.videoType,
+        url: firstVideo.videos[0]?.url?.substring(0, 50) + '...',
       });
     }
     
@@ -233,7 +246,6 @@ export async function GET(request: NextRequest) {
       nextCursor,
       hasMore,
       totalFound: paginatedItems.length,
-      totalAvailable: allVideoItems.length,
     });
     
   } catch (error) {
