@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, startTransition, lazy, Suspense } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import VideoFeedItemComponent from './VideoFeedItem';
 import { VideoFeedItem } from '@/types/neynar';
 import { rafThrottle } from '../utils/taskScheduler';
@@ -494,7 +495,7 @@ export default function VideoFeed({
     return (
       <div className="h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-3 border-white/20 border-t-white rounded-full animate-spin mb-4 mx-auto"></div>
+          <Icon icon="svg-spinners:ring-resize" className="w-12 h-12 text-white mb-4 mx-auto" />
           <p className="text-white">Loading videos...</p>
         </div>
       </div>
@@ -584,7 +585,7 @@ export default function VideoFeed({
           {/* Loading indicator when fetching more videos */}
           {loadingMore && (
             <div className="h-32 flex flex-col items-center justify-center gap-3 bg-black">
-              <div className="w-8 h-8 border-3 border-white/20 border-t-white rounded-full animate-spin"></div>
+              <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 text-white" />
               <p className="text-white/60 text-sm">Loading more videos...</p>
             </div>
           )}
@@ -602,7 +603,7 @@ export default function VideoFeed({
       {!isMobile && (
         <Suspense fallback={
           <div className="h-screen bg-black flex items-center justify-center">
-            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+            <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 text-white" />
           </div>
         }>
           <DesktopVideoFeed

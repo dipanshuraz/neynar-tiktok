@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { ProcessedVideo } from '@/types/neynar';
 import { Play, Volume2, VolumeX, AlertCircle, Share2 } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import Hls from 'hls.js';
 import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
 import { reportVideoStartup } from '../hooks/useVideoStartupMetrics';
@@ -697,7 +698,7 @@ function VideoPlayer({
       {/* Loading Overlay - Simple circular loader only */}
       {isLoading && !showPoster && !error && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
-          <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
+          <Icon icon="svg-spinners:ring-resize" className="w-12 h-12 text-white" />
         </div>
       )}
 
