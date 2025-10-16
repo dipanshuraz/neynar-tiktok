@@ -7,6 +7,7 @@ import { useLongTaskMonitor } from '../hooks/useLongTaskMonitor';
 import { useMemoryMonitor, formatBytes, triggerGC } from '../hooks/useMemoryMonitor';
 import { useVideoStartupMetrics, getStartupPerformanceStatus } from '../hooks/useVideoStartupMetrics';
 import { useNetworkQuality, formatNetworkSpeed, getNetworkQualityColor } from '../hooks/useNetworkQuality';
+import { useErrorMetrics, getErrorSeverity, getRecoveryRate } from '../hooks/useErrorMetrics';
 
 interface PerformanceStats {
   fps: number;
@@ -28,6 +29,7 @@ export default function PerformanceOverlay() {
   const memoryMetrics = useMemoryMonitor(5000, 5); // Check every 5s, leak threshold 5
   const startupMetrics = useVideoStartupMetrics();
   const networkInfo = useNetworkQuality();
+  const errorMetrics = useErrorMetrics();
   const fpsHistoryRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
@@ -328,6 +330,56 @@ export default function PerformanceOverlay() {
             </div>
           )}
         </div>
+
+        {/* Error Metrics Section */}
+        {errorMetrics.totalErrors > 0 && (
+          <>
+            <div className="h-px bg-white/10 my-2" />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60">Errors:</span>
+                <span className={`font-bold text-[10px] ${
+                  getErrorSeverity(errorMetrics.errorRate) === 'good' ? 'text-green-400' :
+                  getErrorSeverity(errorMetrics.errorRate) === 'warning' ? 'text-yellow-400' : 'text-red-400'
+                }`}>
+                  {errorMetrics.totalErrors}
+                </span>
+              </div>
+              
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60 text-[10px]">Error Rate:</span>
+                <span className="text-white text-[9px]">
+                  {errorMetrics.errorRate}%
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60 text-[10px]">Recovered:</span>
+                <span className={`text-[9px] ${
+                  getRecoveryRate(errorMetrics) > 75 ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  {errorMetrics.successfulRetries}/{errorMetrics.totalErrors}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-white/60 text-[10px]">Avg Retries:</span>
+                <span className="text-white text-[9px]">
+                  {errorMetrics.avgRetriesPerError}
+                </span>
+              </div>
+
+              {errorMetrics.lastErrorType && (
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-white/60 text-[10px]">Last:</span>
+                  <span className="text-red-400 text-[9px]">
+                    {errorMetrics.lastErrorType}
+                  </span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
       
       {/* FPS Bar */}
