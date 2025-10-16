@@ -2,12 +2,13 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 import VideoFeedItemComponent from './VideoFeedItem';
 import DesktopVideoFeed from './DesktopVideoFeed';
 import PerformanceOverlay from './PerformanceOverlay';
 import { VideoFeedItem } from '@/types/neynar';
+import { rafThrottle } from '../utils/taskScheduler';
 
 interface VideoFeedResponse {
   videos: VideoFeedItem[];
@@ -104,7 +105,7 @@ export default function VideoFeed() {
     }
   }, [fetchVideos, hasMore, loadingMore, nextCursor]);
 
-  // Intersection observer - optimized for performance
+  // Intersection observer - optimized for performance with React 18 transitions
   useEffect(() => {
     if (!isMobile || !containerRef.current || videos.length === 0) return;
 
@@ -117,9 +118,16 @@ export default function VideoFeed() {
           entries.forEach((entry) => {
             if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
               const index = parseInt(entry.target.getAttribute('data-index') || '0');
-              console.log(`👁️ Video ${index + 1} is active`);
-              setCurrentIndex(index);
               
+              // Use startTransition for non-urgent updates
+              startTransition(() => {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`👁️ Video ${index + 1} is active`);
+                }
+                setCurrentIndex(index);
+              });
+              
+              // Load more videos if needed (urgent)
               if (index >= videos.length - 2 && hasMore && !loadingMore) {
                 loadMoreVideos();
               }
@@ -167,17 +175,16 @@ export default function VideoFeed() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentIndex, videos.length, isMuted]);
 
-  // Optimize scroll performance with passive listeners
+  // Optimize scroll performance with throttled passive listeners
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !isMobile) return;
 
-    const handleScroll = () => {
-      // Use requestAnimationFrame to batch scroll updates
-      requestAnimationFrame(() => {
-        // Scroll handling is done by IntersectionObserver
-      });
-    };
+    // Throttle scroll handler to run at most once per frame
+    const handleScroll = rafThrottle(() => {
+      // Scroll handling is done by IntersectionObserver
+      // This is just for any additional scroll-based logic
+    });
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);

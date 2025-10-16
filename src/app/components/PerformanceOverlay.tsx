@@ -3,6 +3,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { useLongTaskMonitor } from '../hooks/useLongTaskMonitor';
 
 interface PerformanceStats {
   fps: number;
@@ -20,6 +21,7 @@ export default function PerformanceOverlay() {
     droppedFrames: 0,
   });
   const [isVisible, setIsVisible] = useState(true);
+  const longTaskStats = useLongTaskMonitor(50);
   const fpsHistoryRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
@@ -158,6 +160,26 @@ export default function PerformanceOverlay() {
             </div>
           </>
         )}
+
+        {/* Long Tasks Section */}
+        <div className="h-px bg-white/10 my-2" />
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-white/60">Long Tasks:</span>
+            <span className={`font-bold ${longTaskStats.count > 0 ? 'text-red-400' : 'text-green-400'}`}>
+              {longTaskStats.count}
+            </span>
+          </div>
+          
+          {longTaskStats.longestDuration > 0 && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-white/60 text-[10px]">Longest:</span>
+              <span className="text-white text-[10px]">
+                {longTaskStats.longestDuration.toFixed(1)}ms
+              </span>
+            </div>
+          )}
+        </div>
       </div>
       
       {/* FPS Bar */}

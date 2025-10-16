@@ -34,31 +34,39 @@ function VideoPlayer({
   // Setup HLS - Only load when active or about to be active
   useEffect(() => {
     if (!videoRef.current || !currentVideo?.url || !isActive) {
-      console.log('⏳ Waiting for video element or not active...', { 
-        hasRef: !!videoRef.current, 
-        hasUrl: !!currentVideo?.url,
-        isActive 
-      });
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏳ Waiting for video element or not active...', { 
+          hasRef: !!videoRef.current, 
+          hasUrl: !!currentVideo?.url,
+          isActive 
+        });
+      }
       return;
     }
 
     const video = videoRef.current;
     const videoUrl = currentVideo.url;
 
-    console.log('🎬 Setting up HLS for:', videoUrl);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🎬 Setting up HLS for:', videoUrl);
+    }
     setIsLoading(true);
     setError(null);
 
     // Clean up previous
     if (hlsRef.current) {
-      console.log('🧹 Destroying previous HLS');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🧹 Destroying previous HLS');
+      }
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
     // Safari native HLS
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      console.log('✅ Using native HLS (Safari)');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Using native HLS (Safari)');
+      }
       video.src = videoUrl;
       video.load();
       setIsLoading(false);
@@ -73,7 +81,6 @@ function VideoPlayer({
       return;
     }
 
-    console.log('✅ Creating HLS.js instance');
     const hls = new Hls({
       debug: false, // Disable debug in production for performance
       enableWorker: true,
@@ -86,29 +93,25 @@ function VideoPlayer({
     hlsRef.current = hls;
 
     hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-      console.log('📺 Media attached - loading source');
       hls.loadSource(videoUrl);
     });
 
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      console.log('✅ MANIFEST PARSED SUCCESS!');
       setIsLoading(false);
       setError(null);
     });
 
     hls.on(Hls.Events.ERROR, (event, data) => {
-      console.error('❌ HLS Error:', data);
       if (data.fatal) {
+        console.error('❌ HLS Error:', data);
         setError(`HLS Error: ${data.details}`);
         setIsLoading(false);
       }
     });
 
-    console.log('🔗 Attaching media to video element');
     hls.attachMedia(video);
 
     return () => {
-      console.log('🧹 Cleanup HLS');
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -127,18 +130,17 @@ function VideoPlayer({
     video.muted = isMuted;
 
     if (isActive) {
-      console.log('▶️ ATTEMPTING TO PLAY');
       video.play()
         .then(() => {
-          console.log('✅ PLAYING!');
           setShowPlayButton(false);
         })
         .catch(err => {
-          console.warn('⚠️ Play failed:', err.message);
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('⚠️ Play failed:', err.message);
+          }
           setShowPlayButton(true);
         });
     } else {
-      console.log('⏸️ PAUSING');
       video.pause();
     }
   }, [isActive, isMuted, isLoading, error]);
@@ -149,22 +151,19 @@ function VideoPlayer({
     if (!video) return;
 
     const onPlay = () => {
-      console.log('🎬 Video playing event');
       setIsPlaying(true);
       setShowPlayButton(false);
     };
 
     const onPause = () => {
-      console.log('⏸️ Video pause event');
       setIsPlaying(false);
     };
 
     const onLoadedMetadata = () => {
-      console.log('📊 Video metadata loaded');
+      // Video metadata loaded
     };
 
     const onCanPlay = () => {
-      console.log('✅ Video can play');
       setIsLoading(false);
     };
 
