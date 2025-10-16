@@ -28,11 +28,20 @@ const handleMuteToggle = () => {
 };
 ```
 
-### 2. Last Video Position
+### 2. Last Video Position ⚠️ **Important Clarification**
+
+**"Last position" means WHICH VIDEO you were watching, NOT the playback time**
+
+**Example:**
+- ✅ You're watching video #5 in the feed
+- ✅ Close tab → Reopen → App scrolls back to video #5
+- ❌ We DON'T save the 0:23 timestamp within video #5
+
+**Details:**
 - **Saved**: Every time you scroll to a new video
-- **Restored**: On page load (if valid)
+- **Restored**: On page load (auto-scrolls to that video)
 - **Keys**: 
-  - `farcaster-feed-last-index` (video index)
+  - `farcaster-feed-last-index` (video index: 0, 1, 2, ...)
   - `farcaster-feed-last-video-id` (video ID for verification)
 
 ```typescript

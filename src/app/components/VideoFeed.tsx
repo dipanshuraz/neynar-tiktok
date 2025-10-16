@@ -186,8 +186,9 @@ export default function VideoFeed({
         let mostVisible = { index: -1, ratio: 0 };
         
         entries.forEach((entry) => {
-          // Require 60% visibility for more stability during quick swipes
-          if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
+          // Use 30% visibility threshold for better initial load detection
+          // Still stable during quick swipes due to debouncing
+          if (entry.isIntersecting && entry.intersectionRatio > 0.3) {
             const index = parseInt(entry.target.getAttribute('data-index') || '0');
             if (entry.intersectionRatio > mostVisible.ratio) {
               mostVisible = { index, ratio: entry.intersectionRatio };
@@ -289,17 +290,22 @@ export default function VideoFeed({
   }, [loadInitialVideos]);
 
   // Ensure first video is active on mount (mobile only)
+  // This runs once when videos first load to trigger autoplay
   useEffect(() => {
-    if (isMobile && videos.length > 0 && currentIndex === 0) {
-      // Force first video to be active after videos load
-      setTimeout(() => {
+    if (isMobile && videos.length > 0) {
+      // Force first video to be active immediately after videos load
+      // This triggers the video.play() in VideoPlayer
+      const timer = setTimeout(() => {
         if (process.env.NODE_ENV === 'development') {
           console.log('🎬 Forcing first video active on mount');
         }
-        setCurrentIndex(0);
-      }, 100);
+        // Trigger a state update to force re-render and activate video
+        setCurrentIndex(prev => prev === 0 ? 0 : 0);
+      }, 50); // Shorter delay for faster autoplay
+      
+      return () => clearTimeout(timer);
     }
-  }, [videos.length, isMobile]);
+  }, [videos.length, isMobile]); // Only depend on videos.length, not currentIndex
 
   // Measure First Input Delay in development
   useEffect(() => {
