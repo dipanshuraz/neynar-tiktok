@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test LocalStorage</title></head>
+<body>
+<h2>LocalStorage Test</h2>
+<button onclick="saveMute()">Save Muted=false</button>
+<button onclick="loadMute()">Load Mute State</button>
+<button onclick="clearMute()">Clear</button>
+<pre id="output"></pre>
+<script>
+const output = document.getElementById('output');
+function saveMute() {
+  localStorage.setItem('farcaster-feed-mute-state', 'false');
+  output.textContent = 'Saved: false\n' + JSON.stringify(localStorage, null, 2);
+}
+function loadMute() {
+  const value = localStorage.getItem('farcaster-feed-mute-state');
+  output.textContent = 'Loaded: ' + value + '\n' + JSON.stringify(localStorage, null, 2);
+}
+function clearMute() {
+  localStorage.removeItem('farcaster-feed-mute-state');
+  output.textContent = 'Cleared\n' + JSON.stringify(localStorage, null, 2);
+}
+loadMute();
+</script>
+</body>
+</html>

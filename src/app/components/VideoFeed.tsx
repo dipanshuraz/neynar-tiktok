@@ -58,6 +58,11 @@ export default function VideoFeed({
   // Monitor network quality for adaptive preloading
   const networkInfo = useNetworkQuality();
   
+  // Sync isMuted state with preferences when they load from localStorage
+  useEffect(() => {
+    setIsMuted(preferences.isMuted);
+  }, [preferences.isMuted]);
+  
   // Restore last video position on mount (after videos load)
   useEffect(() => {
     if (videos.length > 0 && preferences.lastVideoIndex > 0 && preferences.lastVideoIndex < videos.length) {

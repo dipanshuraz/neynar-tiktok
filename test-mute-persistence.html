@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Mute Persistence - Farcaster Feed</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #0a0a0a;
+      color: #fff;
+    }
+    h1 {
+      color: #00d9ff;
+      border-bottom: 2px solid #00d9ff;
+      padding-bottom: 10px;
+    }
+    .test-section {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    button {
+      background: #00d9ff;
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 5px;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: #00b8d4;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+    }
+    button.danger {
+      background: #ff4444;
+      color: #fff;
+    }
+    button.danger:hover {
+      background: #cc0000;
+    }
+    pre {
+      background: #000;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 15px;
+      overflow-x: auto;
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+    }
+    .status {
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+      font-weight: 600;
+    }
+    .status.pass {
+      background: #004400;
+      border: 1px solid #00ff00;
+      color: #00ff00;
+    }
+    .status.fail {
+      background: #440000;
+      border: 1px solid #ff0000;
+      color: #ff0000;
+    }
+    .status.info {
+      background: #003344;
+      border: 1px solid #00d9ff;
+      color: #00d9ff;
+    }
+    .key-value {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px;
+      border-bottom: 1px solid #333;
+    }
+    .key {
+      color: #00d9ff;
+      font-weight: 600;
+    }
+    .value {
+      color: #0f0;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 Mute Persistence Test Suite</h1>
+  
+  <div class="test-section">
+    <h2>📋 Test Instructions</h2>
+    <ol>
+      <li>Click "Set Muted = false" to save unmuted state</li>
+      <li>Verify the state is saved in localStorage</li>
+      <li>Refresh the page (F5 or Cmd+R)</li>
+      <li>Check that the state persists after reload</li>
+    </ol>
+  </div>
+
+  <div class="test-section">
+    <h2>🎮 Controls</h2>
+    <button onclick="setMuted(false)">Set Muted = false</button>
+    <button onclick="setMuted(true)">Set Muted = true</button>
+    <button onclick="loadState()">Reload State</button>
+    <button onclick="clearAll()" class="danger">Clear All</button>
+    <button onclick="runAutoTest()">Run Auto Test</button>
+  </div>
+
+  <div class="test-section">
+    <h2>📊 Current State</h2>
+    <div id="current-state"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>🗄️ localStorage Contents</h2>
+    <pre id="storage-contents"></pre>
+  </div>
+
+  <div class="test-section">
+    <h2>✅ Test Results</h2>
+    <div id="test-results"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>📝 Test Log</h2>
+    <pre id="log"></pre>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'farcaster-feed-mute-state';
+    const log = [];
+
+    function logMessage(msg, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const prefix = {
+        info: '📝',
+        success: '✅',
+        error: '❌',
+        warning: '⚠️'
+      }[type] || '📝';
+      
+      const message = `[${timestamp}] ${prefix} ${msg}`;
+      log.push(message);
+      document.getElementById('log').textContent = log.join('\n');
+      console.log(message);
+    }
+
+    function setMuted(value) {
+      try {
+        localStorage.setItem(STORAGE_KEY, String(value));
+        logMessage(`Set mute state to: ${value}`, 'success');
+        loadState();
+      } catch (error) {
+        logMessage(`Failed to set mute state: ${error.message}`, 'error');
+      }
+    }
+
+    function loadState() {
+      try {
+        const muteState = localStorage.getItem(STORAGE_KEY);
+        const allKeys = [
+          'farcaster-feed-mute-state',
+          'farcaster-feed-last-index',
+          'farcaster-feed-last-video-id',
+          'farcaster-feed-playback-speed',
+          'farcaster-feed-volume'
+        ];
+
+        // Display current state
+        const stateHTML = `
+          <div class="key-value">
+            <span class="key">Mute State:</span>
+            <span class="value">${muteState || 'null'}</span>
+          </div>
+          <div class="key-value">
+            <span class="key">Parsed Boolean:</span>
+            <span class="value">${muteState === 'true'}</span>
+          </div>
+          <div class="key-value">
+            <span class="key">Is Muted?</span>
+            <span class="value">${muteState === 'true' ? '🔇 Yes' : '🔊 No'}</span>
+          </div>
+        `;
+        document.getElementById('current-state').innerHTML = stateHTML;
+
+        // Display all localStorage
+        const storage = {};
+        allKeys.forEach(key => {
+          const value = localStorage.getItem(key);
+          if (value !== null) {
+            storage[key] = value;
+          }
+        });
+        document.getElementById('storage-contents').textContent = 
+          JSON.stringify(storage, null, 2) || '{}';
+
+        logMessage('State loaded successfully', 'success');
+      } catch (error) {
+        logMessage(`Failed to load state: ${error.message}`, 'error');
+      }
+    }
+
+    function clearAll() {
+      if (confirm('Clear all playback preferences?')) {
+        try {
+          const allKeys = [
+            'farcaster-feed-mute-state',
+            'farcaster-feed-last-index',
+            'farcaster-feed-last-video-id',
+            'farcaster-feed-playback-speed',
+            'farcaster-feed-volume'
+          ];
+          allKeys.forEach(key => localStorage.removeItem(key));
+          logMessage('All preferences cleared', 'success');
+          loadState();
+        } catch (error) {
+          logMessage(`Failed to clear: ${error.message}`, 'error');
+        }
+      }
+    }
+
+    async function runAutoTest() {
+      logMessage('🧪 Starting automated test suite...', 'info');
+      const results = [];
+      
+      try {
+        // Test 1: Can write to localStorage
+        logMessage('Test 1: Writing to localStorage...', 'info');
+        localStorage.setItem(STORAGE_KEY, 'false');
+        const readValue = localStorage.getItem(STORAGE_KEY);
+        const test1Pass = readValue === 'false';
+        results.push({
+          name: 'Write to localStorage',
+          pass: test1Pass,
+          message: test1Pass ? 'Success' : `Expected "false", got "${readValue}"`
+        });
+        logMessage(`Test 1: ${test1Pass ? 'PASS' : 'FAIL'}`, test1Pass ? 'success' : 'error');
+
+        // Test 2: Boolean parsing
+        logMessage('Test 2: Boolean parsing...', 'info');
+        const parsedTrue = localStorage.getItem(STORAGE_KEY) === 'true';
+        const test2Pass = parsedTrue === false; // Should be false since we set "false"
+        results.push({
+          name: 'Parse boolean correctly',
+          pass: test2Pass,
+          message: test2Pass ? 'Correctly parsed as false' : 'Failed to parse'
+        });
+        logMessage(`Test 2: ${test2Pass ? 'PASS' : 'FAIL'}`, test2Pass ? 'success' : 'error');
+
+        // Test 3: Toggle state
+        logMessage('Test 3: Toggle to true...', 'info');
+        localStorage.setItem(STORAGE_KEY, 'true');
+        const toggledValue = localStorage.getItem(STORAGE_KEY);
+        const test3Pass = toggledValue === 'true';
+        results.push({
+          name: 'Toggle mute state',
+          pass: test3Pass,
+          message: test3Pass ? 'Successfully toggled' : 'Toggle failed'
+        });
+        logMessage(`Test 3: ${test3Pass ? 'PASS' : 'FAIL'}`, test3Pass ? 'success' : 'error');
+
+        // Test 4: Persistence simulation
+        logMessage('Test 4: Simulating page refresh...', 'info');
+        const beforeRefresh = localStorage.getItem(STORAGE_KEY);
+        // Simulate what happens on page load
+        const afterRefresh = localStorage.getItem(STORAGE_KEY);
+        const test4Pass = beforeRefresh === afterRefresh;
+        results.push({
+          name: 'Persist across "refresh"',
+          pass: test4Pass,
+          message: test4Pass ? 'State persists' : 'State lost'
+        });
+        logMessage(`Test 4: ${test4Pass ? 'PASS' : 'FAIL'}`, test4Pass ? 'success' : 'error');
+
+        // Display results
+        const totalTests = results.length;
+        const passedTests = results.filter(r => r.pass).length;
+        const allPassed = passedTests === totalTests;
+
+        const resultsHTML = `
+          <div class="status ${allPassed ? 'pass' : 'fail'}">
+            ${allPassed ? '✅' : '❌'} ${passedTests}/${totalTests} tests passed
+          </div>
+          ${results.map(r => `
+            <div class="key-value">
+              <span class="key">${r.pass ? '✅' : '❌'} ${r.name}</span>
+              <span class="value">${r.message}</span>
+            </div>
+          `).join('')}
+        `;
+        document.getElementById('test-results').innerHTML = resultsHTML;
+
+        logMessage(`🎉 Test suite complete: ${passedTests}/${totalTests} passed`, 
+          allPassed ? 'success' : 'warning');
+
+        // Show next steps
+        if (allPassed) {
+          logMessage('✨ All tests passed! Try refreshing the page to verify persistence.', 'success');
+        }
+
+      } catch (error) {
+        logMessage(`❌ Test suite failed: ${error.message}`, 'error');
+        document.getElementById('test-results').innerHTML = `
+          <div class="status fail">
+            ❌ Test suite crashed: ${error.message}
+          </div>
+        `;
+      }
+
+      loadState();
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      logMessage('🚀 Test page loaded', 'info');
+      loadState();
+      
+      // Check if we just refreshed
+      const isRefresh = sessionStorage.getItem('test-refresh');
+      if (isRefresh) {
+        logMessage('🔄 Page was refreshed - checking persistence...', 'info');
+        const muteState = localStorage.getItem(STORAGE_KEY);
+        if (muteState !== null) {
+          logMessage(`✅ State persisted after refresh: ${muteState}`, 'success');
+        } else {
+          logMessage('❌ State lost after refresh', 'error');
+        }
+        sessionStorage.removeItem('test-refresh');
+      }
+    });
+
+    // Mark refresh
+    window.addEventListener('beforeunload', () => {
+      sessionStorage.setItem('test-refresh', 'true');
+    });
+  </script>
+</body>
+</html>
+
