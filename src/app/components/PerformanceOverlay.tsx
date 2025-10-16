@@ -6,6 +6,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useLongTaskMonitor } from '../hooks/useLongTaskMonitor';
 import { useMemoryMonitor, formatBytes, triggerGC } from '../hooks/useMemoryMonitor';
 import { useVideoStartupMetrics, getStartupPerformanceStatus } from '../hooks/useVideoStartupMetrics';
+import { useNetworkQuality, formatNetworkSpeed, getNetworkQualityColor } from '../hooks/useNetworkQuality';
 
 interface PerformanceStats {
   fps: number;
@@ -26,6 +27,7 @@ export default function PerformanceOverlay() {
   const longTaskStats = useLongTaskMonitor(50);
   const memoryMetrics = useMemoryMonitor(5000, 5); // Check every 5s, leak threshold 5
   const startupMetrics = useVideoStartupMetrics();
+  const networkInfo = useNetworkQuality();
   const fpsHistoryRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
@@ -274,6 +276,58 @@ export default function PerformanceOverlay() {
             </div>
           </>
         )}
+
+        {/* Network Section */}
+        <div className="h-px bg-white/10 my-2" />
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-white/60">Network:</span>
+            <span className={`font-bold text-[10px] ${getNetworkQualityColor(networkInfo.speed)}`}>
+              {networkInfo.speed.toUpperCase()}
+            </span>
+          </div>
+          
+          {networkInfo.effectiveType !== 'unknown' && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-white/60 text-[10px]">Type:</span>
+              <span className="text-white text-[9px]">
+                {networkInfo.effectiveType.toUpperCase()}
+              </span>
+            </div>
+          )}
+
+          {networkInfo.downlink && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-white/60 text-[10px]">Speed:</span>
+              <span className="text-white text-[9px]">
+                {formatNetworkSpeed(networkInfo.downlink)}
+              </span>
+            </div>
+          )}
+
+          {networkInfo.rtt !== undefined && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-white/60 text-[10px]">RTT:</span>
+              <span className="text-white text-[9px]">
+                {networkInfo.rtt}ms
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-white/60 text-[10px]">Preload:</span>
+            <span className="text-white text-[9px]">
+              {networkInfo.maxPreloadCount === 0 ? 'Off' : 
+               `${networkInfo.maxPreloadCount} (${networkInfo.preloadDirection})`}
+            </span>
+          </div>
+
+          {networkInfo.saveData && (
+            <div className="text-yellow-400 text-[9px] font-bold">
+              📊 Data Saver ON
+            </div>
+          )}
+        </div>
       </div>
       
       {/* FPS Bar */}

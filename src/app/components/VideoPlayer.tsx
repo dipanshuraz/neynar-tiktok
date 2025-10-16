@@ -8,6 +8,7 @@ import { Play, Volume2, VolumeX, AlertCircle } from 'lucide-react';
 import Hls from 'hls.js';
 import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
 import { reportVideoStartup } from '../hooks/useVideoStartupMetrics';
+import { NetworkSpeed, getHLSBufferSettings } from '../hooks/useNetworkQuality';
 
 interface VideoPlayerProps {
   videos: ProcessedVideo[];
@@ -16,6 +17,7 @@ interface VideoPlayerProps {
   onMuteToggle: () => void;
   className?: string;
   shouldPreload?: boolean; // Preload video in background for fast startup
+  networkSpeed?: NetworkSpeed; // Adapt HLS settings based on network
 }
 
 function VideoPlayer({ 
@@ -24,7 +26,8 @@ function VideoPlayer({
   isMuted, 
   onMuteToggle, 
   className = '',
-  shouldPreload = false
+  shouldPreload = false,
+  networkSpeed = 'medium'
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -100,28 +103,35 @@ function VideoPlayer({
       return;
     }
 
+    // Get network-aware buffer settings
+    const bufferSettings = getHLSBufferSettings(networkSpeed);
+    
     const hls = new Hls({
       debug: false, // Disable debug in production for performance
       enableWorker: true,
-      // Optimize for fast startup
-      maxBufferLength: 5, // Reduced from 10 for faster startup
-      maxMaxBufferLength: 15, // Reduced from 30
-      maxBufferSize: 60 * 1000 * 1000, // 60 MB
+      // Network-adaptive buffer settings
+      maxBufferLength: bufferSettings.maxBufferLength,
+      maxMaxBufferLength: bufferSettings.maxMaxBufferLength,
+      maxBufferSize: bufferSettings.maxBufferSize,
       maxBufferHole: 0.5, // Jump over small holes
       lowLatencyMode: true,
       backBufferLength: 0, // Don't keep old segments
       // Fast manifest loading
       manifestLoadingTimeOut: 10000,
-      manifestLoadingMaxRetry: 2,
+      manifestLoadingMaxRetry: networkSpeed === 'slow' ? 1 : 2, // Fewer retries on slow connections
       manifestLoadingRetryDelay: 1000,
       // Fast fragment loading
       fragLoadingTimeOut: 20000,
-      fragLoadingMaxRetry: 3,
+      fragLoadingMaxRetry: networkSpeed === 'slow' ? 2 : 3, // Fewer retries on slow connections
       fragLoadingRetryDelay: 1000,
       // Start playback ASAP
       liveSyncDurationCount: 1,
       liveMaxLatencyDurationCount: 3,
     });
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📶 HLS config for ${networkSpeed} network:`, bufferSettings);
+    }
 
     hlsRef.current = hls;
 
@@ -166,7 +176,7 @@ function VideoPlayer({
         videoRef.current.load();
       }
     };
-  }, [currentVideo?.url, isActive, shouldPreload]); // Depend on URL, isActive, and shouldPreload
+  }, [currentVideo?.url, isActive, shouldPreload, networkSpeed]); // Include networkSpeed dependency
 
   // Playback control
   useEffect(() => {

@@ -9,6 +9,7 @@ import { VideoFeedItem } from '@/types/neynar';
 import { rafThrottle } from '../utils/taskScheduler';
 import { useFirstInteraction, measureFirstInputDelay } from '../hooks/useFirstInteraction';
 import { useComponentMemoryTracking } from '../hooks/useMemoryMonitor';
+import { useNetworkQuality, shouldPreloadVideo } from '../hooks/useNetworkQuality';
 
 // Lazy load non-critical components for faster initial load
 const DesktopVideoFeed = lazy(() => import('./DesktopVideoFeed'));
@@ -40,6 +41,9 @@ export default function VideoFeed() {
   
   // Track memory usage
   useComponentMemoryTracking('VideoFeed');
+  
+  // Monitor network quality for adaptive preloading
+  const networkInfo = useNetworkQuality();
   
   // Memoize toggle functions to prevent re-renders
   const handleMuteToggle = useCallback(() => {
@@ -274,7 +278,8 @@ export default function VideoFeed() {
           {/* Virtual scrolling: Only render visible videos */}
           {videos.map((video, index) => {
             const isInRange = Math.abs(index - currentIndex) <= 1;
-            const shouldPreload = Math.abs(index - currentIndex) === 1; // Preload adjacent videos
+            // Network-aware preloading: adapts based on connection speed
+            const shouldPreload = shouldPreloadVideo(currentIndex, index, networkInfo);
             
             return (
               <div
@@ -298,6 +303,7 @@ export default function VideoFeed() {
                     onMuteToggle={handleMuteToggle}
                     isMobile={true}
                     shouldPreload={shouldPreload}
+                    networkSpeed={networkInfo.speed}
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-900" />

@@ -6,6 +6,7 @@ import { useState, memo, useCallback } from 'react';
 import { Heart, MessageCircle, Share, Plus } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import { VideoFeedItem } from '@/types/neynar';
+import { NetworkSpeed } from '../hooks/useNetworkQuality';
 
 interface VideoFeedItemProps {
   item: VideoFeedItem;
@@ -14,6 +15,7 @@ interface VideoFeedItemProps {
   onMuteToggle: () => void;
   isMobile?: boolean;
   shouldPreload?: boolean; // Pass through to VideoPlayer
+  networkSpeed?: NetworkSpeed; // Network quality info
 }
 
 function VideoFeedItemComponent({ 
@@ -22,7 +24,8 @@ function VideoFeedItemComponent({
   isMuted,
   onMuteToggle,
   isMobile = true,
-  shouldPreload = false
+  shouldPreload = false,
+  networkSpeed = 'medium'
 }: VideoFeedItemProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -99,6 +102,7 @@ function VideoFeedItemComponent({
           onMuteToggle={onMuteToggle}
           className="w-full h-full"
           shouldPreload={shouldPreload}
+          networkSpeed={networkSpeed}
         />
 
         {/* TikTok-Style Overlays */}
@@ -270,6 +274,7 @@ export default memo(VideoFeedItemComponent, (prevProps, nextProps) => {
     prevProps.isActive === nextProps.isActive &&
     prevProps.isMuted === nextProps.isMuted &&
     prevProps.isMobile === nextProps.isMobile &&
-    prevProps.shouldPreload === nextProps.shouldPreload
+    prevProps.shouldPreload === nextProps.shouldPreload &&
+    prevProps.networkSpeed === nextProps.networkSpeed
   );
 });
