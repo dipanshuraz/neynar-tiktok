@@ -27,7 +27,9 @@ class Storage {
   private async init(): Promise<void> {
     // Check if IndexedDB is available
     if (!('indexedDB' in window)) {
-      console.warn('IndexedDB not available, falling back to localStorage');
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('IndexedDB not available, falling back to localStorage');
+      }
       this.useIndexedDB = false;
       return;
     }
@@ -39,7 +41,9 @@ class Storage {
         console.log('✅ IndexedDB initialized successfully');
       }
     } catch (error) {
-      console.warn('Failed to initialize IndexedDB, falling back to localStorage:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to initialize IndexedDB, falling back to localStorage:', error);
+      }
       this.useIndexedDB = false;
     }
   }

@@ -121,7 +121,14 @@ function VideoFeedItemComponent({
                 alt={cast.author.display_name}
                 className="w-10 h-10 rounded-full border-2 border-white object-cover"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/default-avatar.png';
+                  const img = e.target as HTMLImageElement;
+                  // Prevent infinite loop if fallback also fails
+                  if (!img.src.includes('/default-avatar.png')) {
+                    img.src = '/default-avatar.png';
+                  } else {
+                    // Fallback failed - remove error handler to prevent memory leak
+                    img.onError = null;
+                  }
                 }}
               />
               <div className="flex-1 min-w-0">
@@ -158,7 +165,14 @@ function VideoFeedItemComponent({
                   alt={cast.channel.name}
                   className="w-5 h-5 rounded object-cover"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/default-channel.png';
+                    const img = e.target as HTMLImageElement;
+                    // Prevent infinite loop if fallback also fails
+                    if (!img.src.includes('/default-channel.png')) {
+                      img.src = '/default-channel.png';
+                    } else {
+                      // Fallback failed - remove error handler to prevent memory leak
+                      img.onError = null;
+                    }
                   }}
                 />
                 <span className="text-white/80 text-sm font-medium">
@@ -179,7 +193,14 @@ function VideoFeedItemComponent({
                 alt={cast.author.display_name}
                 className="w-12 h-12 rounded-full border-2 border-white object-cover"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/default-avatar.png';
+                  const img = e.target as HTMLImageElement;
+                  // Prevent infinite loop if fallback also fails
+                  if (!img.src.includes('/default-avatar.png')) {
+                    img.src = '/default-avatar.png';
+                  } else {
+                    // Fallback failed - remove error handler to prevent memory leak
+                    img.onError = null;
+                  }
                 }}
               />
             </button>

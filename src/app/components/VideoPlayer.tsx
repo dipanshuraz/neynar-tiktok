@@ -211,7 +211,9 @@ function VideoPlayer({
       const safetyTimeout = isMobile ? 20000 : 10000;
       loadingTimeoutRef.current = setTimeout(() => {
         if (isLoading) {
-          console.warn('⏱️ Video loading timeout - forcing error state');
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('⏱️ Video loading timeout - forcing error state');
+          }
           setError('Video took too long to load. Please try again.');
           setIsLoading(false);
           setShowPoster(true);
