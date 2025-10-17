@@ -495,12 +495,23 @@ function VideoPlayer({
 
     // Now handle play/pause
     if (!shouldPlay) {
-      // User explicitly paused (keyboard shortcut)
+      // User explicitly paused (keyboard shortcut) or video requires manual play
       video.pause();
       userPausedRef.current = true;
       setShowPlayButton(true);
+      // Ensure loading spinner is hidden when paused and ready
+      if (video.readyState >= 2) {
+        setIsLoading(false);
+      } else {
+        // Wait for video to be ready, then hide loading
+        const onReadyWhenPaused = () => {
+          setIsLoading(false);
+          setShowPlayButton(true);
+        };
+        video.addEventListener('canplay', onReadyWhenPaused, { once: true });
+      }
       if (process.env.NODE_ENV === 'development') {
-        console.log('⏸️ User paused video');
+        console.log('⏸️ Video paused (shouldPlay=false)');
       }
       return;
     }
@@ -649,7 +660,9 @@ function VideoPlayer({
         console.log('✅ Video can play');
       }
       
+      // Always hide loading spinner when video can play, even if paused
       setIsLoading(false);
+      setShowPoster(false);
       
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
@@ -677,6 +690,7 @@ function VideoPlayer({
         console.log('📦 Video data loaded');
       }
       setIsLoading(false);
+      setShowPoster(false);
       
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
