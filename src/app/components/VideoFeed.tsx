@@ -70,6 +70,7 @@ export default function VideoFeed({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const isPaginatingRef = useRef(false); // Track if we're currently paginating
   
   // Track first interaction timing
   const firstInteraction = useFirstInteraction();
@@ -320,11 +321,17 @@ export default function VideoFeed({
       return;
     }
 
+    // Save current scroll position to restore after pagination
+    const container = containerRef.current;
+    const savedScrollTop = container?.scrollTop || 0;
+
     try {
       if (process.env.NODE_ENV === 'development') {
         console.log(`📥 Loading more videos with cursor: ${nextCursor.substring(0, 20)}...`);
+        console.log(`   Current scroll position: ${savedScrollTop}px`);
       }
       loadingMoreRef.current = true;
+      isPaginatingRef.current = true; // Mark as paginating to prevent observer jumps
       setLoadingMore(true);
       const data = await fetchVideos(nextCursor);
       
@@ -339,11 +346,23 @@ export default function VideoFeed({
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
         
+        // Restore scroll position after a brief delay to let DOM update
+        setTimeout(() => {
+          if (container && savedScrollTop > 0) {
+            container.scrollTop = savedScrollTop;
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`↩️ Restored scroll position to ${savedScrollTop}px`);
+            }
+          }
+          isPaginatingRef.current = false; // Done paginating
+        }, 100);
+        
         if (process.env.NODE_ENV === 'development') {
           console.log(`📄 Next cursor: ${data.nextCursor ? data.nextCursor.substring(0, 20) + '...' : 'none'}`);
           console.log(`🔄 Has more: ${data.hasMore}`);
         }
       } else {
+        isPaginatingRef.current = false;
         setHasMore(false);
         if (process.env.NODE_ENV === 'development') {
           console.log('🏁 No more videos available');
@@ -351,6 +370,7 @@ export default function VideoFeed({
       }
     } catch (err) {
       console.error('❌ Load more error:', err);
+      isPaginatingRef.current = false;
       setHasMore(false); // Prevent infinite retry
     } finally {
       loadingMoreRef.current = false;
@@ -368,6 +388,14 @@ export default function VideoFeed({
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
+        // Skip processing if we're currently paginating (prevent scroll jumps)
+        if (isPaginatingRef.current) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('⏸️ Skipping observer update during pagination');
+          }
+          return;
+        }
+        
         // Find the most visible video
         let mostVisible = { index: -1, ratio: 0 };
         
@@ -402,8 +430,8 @@ export default function VideoFeed({
             // Save position with current cursor for efficient restoration
             setLastVideoIndex(mostVisible.index, videoId, nextCursor);
             
-            // Load more videos when user reaches 1/3 through current videos
-            const loadMoreTrigger = Math.floor(videos.length / 3);
+            // Load more videos when user reaches 2/3 through current videos (changed from 1/3 to reduce triggers)
+            const loadMoreTrigger = Math.floor((videos.length * 2) / 3);
             if (mostVisible.index >= loadMoreTrigger && hasMore && !loadingMore) {
               if (process.env.NODE_ENV === 'development') {
                 console.log(`🔄 Triggering load more at video ${mostVisible.index + 1}/${videos.length} (trigger point: ${loadMoreTrigger + 1})`);
