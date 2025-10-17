@@ -71,6 +71,7 @@ export default function VideoFeed({
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const isPaginatingRef = useRef(false); // Track if we're currently paginating
+  const currentIndexBeforePaginationRef = useRef<number>(0); // Save index before pagination
   
   // Track first interaction timing
   const firstInteraction = useFirstInteraction();
@@ -321,13 +322,16 @@ export default function VideoFeed({
       return;
     }
 
-    // Save current scroll position to restore after pagination
+    // Save current state to restore after pagination
     const container = containerRef.current;
     const savedScrollTop = container?.scrollTop || 0;
+    const savedCurrentIndex = currentIndex;
+    currentIndexBeforePaginationRef.current = savedCurrentIndex;
 
     try {
       if (process.env.NODE_ENV === 'development') {
         console.log(`📥 Loading more videos with cursor: ${nextCursor.substring(0, 20)}...`);
+        console.log(`   Current video index: ${savedCurrentIndex + 1}`);
         console.log(`   Current scroll position: ${savedScrollTop}px`);
       }
       loadingMoreRef.current = true;
@@ -346,16 +350,27 @@ export default function VideoFeed({
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
         
-        // Restore scroll position after a brief delay to let DOM update
+        // Keep paginating flag active longer to prevent observer from triggering
+        // Clear it after 500ms to ensure DOM has fully updated and settled
         setTimeout(() => {
+          // Restore scroll position
           if (container && savedScrollTop > 0) {
             container.scrollTop = savedScrollTop;
             if (process.env.NODE_ENV === 'development') {
               console.log(`↩️ Restored scroll position to ${savedScrollTop}px`);
             }
           }
+          
+          // Ensure we're still on the same video
+          if (currentIndex !== savedCurrentIndex) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`↩️ Restoring video index from ${currentIndex + 1} to ${savedCurrentIndex + 1}`);
+            }
+            setCurrentIndex(savedCurrentIndex);
+          }
+          
           isPaginatingRef.current = false; // Done paginating
-        }, 100);
+        }, 500); // Increased from 100ms to 500ms for stability
         
         if (process.env.NODE_ENV === 'development') {
           console.log(`📄 Next cursor: ${data.nextCursor ? data.nextCursor.substring(0, 20) + '...' : 'none'}`);
@@ -376,7 +391,7 @@ export default function VideoFeed({
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [fetchVideos, hasMore, nextCursor]);
+  }, [fetchVideos, hasMore, nextCursor, currentIndex]);
 
   // Intersection observer - with debouncing for quick swipes
   useEffect(() => {
