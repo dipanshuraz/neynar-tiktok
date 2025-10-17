@@ -116,6 +116,7 @@ function VideoPlayer({
 
   // Share handler
   const handleShare = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     if (!castHash || !authorUsername) return;
     
@@ -526,6 +527,15 @@ function VideoPlayer({
     const attemptPlay = () => {
       if (!playingRef.current || !isActive) return; // Double-check we should still play
       
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🎬 Attempting to play video', {
+          readyState: video.readyState,
+          paused: video.paused,
+          currentTime: video.currentTime,
+          muted: video.muted
+        });
+      }
+      
       video.play()
         .then(() => {
           if (!isActive || !playingRef.current) {
@@ -539,11 +549,12 @@ function VideoPlayer({
           
           if (process.env.NODE_ENV === 'development') {
             const status = startupTime < 200 ? '✅' : '⚠️';
-            console.log(`${status} Video startup: ${startupTime.toFixed(0)}ms`);
+            console.log(`${status} Video playing! Startup: ${startupTime.toFixed(0)}ms`);
           }
           
           setShowPlayButton(false);
           setIsLoading(false);
+          setShowPoster(false);
           
           if (loadingTimeoutRef.current) {
             clearTimeout(loadingTimeoutRef.current);
@@ -553,22 +564,34 @@ function VideoPlayer({
         .catch(err => {
           if (!isActive || !playingRef.current) return; // Became inactive - ignore error
           
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('⚠️ Play failed:', err.message, 'readyState:', video.readyState);
-          }
+          console.error('❌ Play failed:', {
+            error: err.name,
+            message: err.message,
+            readyState: video.readyState,
+            networkState: video.networkState,
+            paused: video.paused
+          });
           
           if (err.name === 'NotAllowedError') {
             // Browser requires user interaction
+            console.log('⚠️ NotAllowedError - showing play button for user interaction');
             setShowPlayButton(true);
+            setIsLoading(false);
             userPausedRef.current = true;
           } else if (video.readyState < 2) {
             // Video not ready - wait for canplay event
+            console.log('⏳ Video not ready, waiting for canplay event...');
             const onCanPlay = () => {
               if (isActive && playingRef.current) {
                 attemptPlay();
               }
             };
             video.addEventListener('canplay', onCanPlay, { once: true });
+          } else {
+            // Other error - show play button
+            console.error('⚠️ Unknown play error, showing play button');
+            setShowPlayButton(true);
+            setIsLoading(false);
           }
         });
     };
@@ -777,6 +800,7 @@ function VideoPlayer({
   }, [isPlaying, onPlayPauseToggle]);
 
   const handleMuteToggle = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     onMuteToggle();
   }, [onMuteToggle]);
@@ -820,7 +844,7 @@ function VideoPlayer({
         </div>
       )}
 
-      {(showPoster || (isLoading && currentVideo.thumbnail)) && currentVideo.thumbnail && (
+      {showPoster && currentVideo.thumbnail && (
         <div className="absolute inset-0 z-10">
           <img
             src={currentVideo.thumbnail}
@@ -836,17 +860,16 @@ function VideoPlayer({
         loop
         muted={isMuted}
         playsInline
-        autoPlay
         preload="auto"
-        poster={currentVideo.thumbnail}
         {...((isActive || shouldPreload) ? { fetchpriority: 'high' as const } : {})}
         className={`cursor-pointer ${isVerticalVideo ? 'w-full h-full object-cover' : 'max-w-full max-h-full object-contain'}`}
         style={{ 
-          display: showPoster ? 'none' : 'block',
+          display: 'block',
           transform: 'translateZ(0)',
           backfaceVisibility: 'hidden',
           WebkitBackfaceVisibility: 'hidden',
-          backgroundColor: '#000'
+          backgroundColor: '#000',
+          visibility: showPoster ? 'hidden' : 'visible'
         }}
         onClick={handleVideoClick}
       />
