@@ -427,6 +427,43 @@ function VideoPlayer({
       }
     };
   }, [currentVideo?.url, isActive, shouldPreload, networkSpeed, retryCount, retryVideo]); // Include all dependencies
+  
+  // Component unmount cleanup - NUCLEAR OPTION
+  useEffect(() => {
+    const video = videoRef.current;
+    
+    return () => {
+      if (video) {
+        // Immediately stop on unmount
+        video.pause();
+        video.muted = true;
+        video.volume = 0;
+        video.src = '';
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🧹 VideoPlayer unmounted - cleaned up video');
+        }
+      }
+      
+      // Destroy HLS on unmount
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        } catch (err) {
+          // Ignore
+        }
+      }
+      
+      // Clear all timeouts
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, []); // Run once on mount/unmount
 
   // CRITICAL: Immediate pause when becoming inactive (prevent audio overlap)
   // This MUST run BEFORE any play effects - use layout effect timing
@@ -610,11 +647,8 @@ function VideoPlayer({
       }
       
       // Try to play if active and video is ready
-      if (isActive && video.readyState >= 2) { // HAVE_CURRENT_DATA or better
-        video.play().catch(() => {
-          // Ignore errors, will retry when canplay fires
-        });
-      }
+      // DON'T auto-play here - let the main playback effect handle it
+      // This prevents race conditions with audio cleanup
     };
 
     const onCanPlay = () => {
@@ -660,12 +694,8 @@ function VideoPlayer({
         loadingTimeoutRef.current = null;
       }
       
-      // Aggressively try to play as soon as data is loaded
-      if (isActive) {
-        video.play().catch(() => {
-          // Ignore errors, will retry in main playback effect
-        });
-      }
+      // DON'T auto-play here - let the main playback effect handle it
+      // This prevents race conditions and audio overlap
     };
     
     const onError = (e: Event) => {
