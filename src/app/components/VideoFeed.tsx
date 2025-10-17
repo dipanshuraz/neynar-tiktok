@@ -334,8 +334,20 @@ export default function VideoFeed({
           console.log(`✅ Loaded ${data.videos.length} more videos. Total: ${videos.length} + ${data.videos.length} = ${videos.length + data.videos.length}`);
         }
         
-        // Append new videos
-        setVideos(prev => [...prev, ...data.videos]);
+        // Deduplicate videos by ID before appending (prevents circular loop)
+        setVideos(prev => {
+          const existingIds = new Set(prev.map(v => v.id));
+          const newVideos = data.videos.filter(v => !existingIds.has(v.id));
+          
+          if (process.env.NODE_ENV === 'development') {
+            const duplicates = data.videos.length - newVideos.length;
+            if (duplicates > 0) {
+              console.warn(`⚠️ Filtered out ${duplicates} duplicate video(s)`);
+            }
+          }
+          
+          return [...prev, ...newVideos];
+        });
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
         

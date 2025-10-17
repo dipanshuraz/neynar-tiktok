@@ -210,9 +210,14 @@ function VideoPlayer({
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const safetyTimeout = isMobile ? 20000 : 10000;
       loadingTimeoutRef.current = setTimeout(() => {
-        if (isLoading) {
+        // Check VIDEO STATE not isLoading state (which may be stale)
+        if (video.readyState < 2 && video.networkState !== HTMLMediaElement.NETWORK_IDLE) {
           if (process.env.NODE_ENV === 'development') {
-            console.warn('⏱️ Video loading timeout - forcing error state');
+            console.warn('⏱️ Video loading timeout - forcing error state', {
+              readyState: video.readyState,
+              networkState: video.networkState,
+              paused: video.paused
+            });
           }
           setError('Video took too long to load. Please try again.');
           setIsLoading(false);
