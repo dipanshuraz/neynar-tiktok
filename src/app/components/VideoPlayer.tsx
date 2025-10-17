@@ -73,6 +73,7 @@ function VideoPlayer({
   const preloadStartTimeRef = useRef<number>(0);
   const playbackStartTimeRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Safety timeout for infinite loading
 
   // Track memory usage in development
   useComponentMemoryTracking('VideoPlayer');
@@ -204,6 +205,18 @@ function VideoPlayer({
       const cleanup = () => clearTimeout(loadingTimer);
       video.addEventListener('canplay', cleanup, { once: true });
       video.addEventListener('error', cleanup, { once: true });
+      
+      // Safety timeout: If video doesn't load within 20 seconds on mobile (10s desktop), show error
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const safetyTimeout = isMobile ? 20000 : 10000;
+      loadingTimeoutRef.current = setTimeout(() => {
+        if (isLoading) {
+          console.warn('⏱️ Video loading timeout - forcing error state');
+          setError('Video took too long to load. Please try again.');
+          setIsLoading(false);
+          setShowPoster(true);
+        }
+      }, safetyTimeout);
     } else {
       setIsLoading(true);
     }
@@ -263,9 +276,9 @@ function VideoPlayer({
 
       const bufferSettings = getHLSBufferSettings(networkSpeed);
       
-      // Aggressive timeouts for mobile to prevent long waits
+      // Mobile-friendly timeouts - mobile networks can be slower than desktop
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const timeoutMultiplier = isMobile ? 0.5 : 1; // Half timeouts on mobile
+      const timeoutMultiplier = isMobile ? 2 : 1; // LONGER timeouts on mobile (not shorter!)
       
       // Ultra-low latency settings for preloading
       const isPreloading = shouldPreload && !isActive;
@@ -273,26 +286,26 @@ function VideoPlayer({
       const hls = new HlsClass({
         debug: false, // Disable debug in production for performance
         enableWorker: true,
-        // Ultra-low buffer for fast startup
-        maxBufferLength: isPreloading ? 2 : bufferSettings.maxBufferLength, // Minimal buffer for preload
-        maxMaxBufferLength: isPreloading ? 3 : bufferSettings.maxMaxBufferLength,
-        maxBufferSize: isPreloading ? 0.5 * 1000 * 1000 : bufferSettings.maxBufferSize, // 0.5MB for preload
-        maxBufferHole: 0.3, // Jump over tiny holes
-        lowLatencyMode: true,
+        // Ultra-low buffer for fast startup on preload, larger buffer on active for smooth playback
+        maxBufferLength: isPreloading ? 2 : (isMobile ? 10 : bufferSettings.maxBufferLength), // Larger buffer on mobile active video
+        maxMaxBufferLength: isPreloading ? 3 : (isMobile ? 15 : bufferSettings.maxMaxBufferLength),
+        maxBufferSize: isPreloading ? 0.5 * 1000 * 1000 : bufferSettings.maxBufferSize,
+        maxBufferHole: 0.5, // More tolerant of gaps
+        lowLatencyMode: !isMobile, // Disable low latency mode on mobile for stability
         backBufferLength: 0, // Don't keep old segments
-        // Aggressive manifest loading
-        manifestLoadingTimeOut: 3000 * timeoutMultiplier, // 3s desktop, 1.5s mobile
-        manifestLoadingMaxRetry: 1, // Single retry for speed
-        manifestLoadingRetryDelay: 300, // Fast retry
-        // Aggressive fragment loading
-        fragLoadingTimeOut: 5000 * timeoutMultiplier, // 5s desktop, 2.5s mobile
-        fragLoadingMaxRetry: 1, // Single retry
-        fragLoadingRetryDelay: 300,
+        // More generous manifest loading timeouts for mobile networks
+        manifestLoadingTimeOut: 8000 * timeoutMultiplier, // 8s desktop, 16s mobile
+        manifestLoadingMaxRetry: 3, // More retries for reliability
+        manifestLoadingRetryDelay: 1000, // 1s retry delay
+        // More generous fragment loading timeouts
+        fragLoadingTimeOut: 10000 * timeoutMultiplier, // 10s desktop, 20s mobile
+        fragLoadingMaxRetry: 3, // More retries
+        fragLoadingRetryDelay: 1000,
         liveSyncDurationCount: 1,
         liveMaxLatencyDurationCount: 2,
-        // Abort controller for stalled requests
+        // More generous XHR timeout for mobile networks
         xhrSetup: function(xhr: XMLHttpRequest) {
-          xhr.timeout = 3000 * timeoutMultiplier; // 3s desktop, 1.5s mobile
+          xhr.timeout = 10000 * timeoutMultiplier; // 10s desktop, 20s mobile
         },
         // Start loading immediately
         startPosition: 0,
@@ -379,6 +392,11 @@ function VideoPlayer({
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
+      }
+      
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
       }
       
       if (hlsRef.current) {
@@ -486,6 +504,12 @@ function VideoPlayer({
           }
           setShowPlayButton(false);
           setIsLoading(false); // Clear loading on successful play
+          
+          // Clear safety timeout - video is playing now
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+            loadingTimeoutRef.current = null;
+          }
         })
         .catch(err => {
           if (process.env.NODE_ENV === 'development') {
@@ -528,6 +552,12 @@ function VideoPlayer({
       setShowPoster(false);
       setIsLoading(false); // Clear loading as soon as metadata is ready
       
+      // Clear safety timeout - video is loading successfully
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+      
       // Try to play if active and video is ready
       if (isActive && video.readyState >= 2) { // HAVE_CURRENT_DATA or better
         video.play().catch(() => {
@@ -542,6 +572,12 @@ function VideoPlayer({
       }
       
       setIsLoading(false);
+      
+      // Clear safety timeout - video can play now
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
       
       // Report successful load if there was a previous error
       if (error) {
@@ -566,6 +602,12 @@ function VideoPlayer({
       }
       // Video has loaded enough to start playing
       setIsLoading(false);
+      
+      // Clear safety timeout - video has data now
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
       
       // Aggressively try to play as soon as data is loaded
       if (isActive) {
