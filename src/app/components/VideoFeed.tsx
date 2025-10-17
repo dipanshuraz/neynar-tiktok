@@ -71,7 +71,6 @@ export default function VideoFeed({
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const isPaginatingRef = useRef(false); // Track if we're currently paginating
-  const currentIndexBeforePaginationRef = useRef<number>(0); // Save index before pagination
   
   // Track first interaction timing
   const firstInteraction = useFirstInteraction();
@@ -322,55 +321,33 @@ export default function VideoFeed({
       return;
     }
 
-    // Save current state to restore after pagination
-    const container = containerRef.current;
-    const savedScrollTop = container?.scrollTop || 0;
-    const savedCurrentIndex = currentIndex;
-    currentIndexBeforePaginationRef.current = savedCurrentIndex;
-
     try {
       if (process.env.NODE_ENV === 'development') {
         console.log(`📥 Loading more videos with cursor: ${nextCursor.substring(0, 20)}...`);
-        console.log(`   Current video index: ${savedCurrentIndex + 1}`);
-        console.log(`   Current scroll position: ${savedScrollTop}px`);
+        console.log(`   Current video index: ${currentIndex + 1}`);
       }
       loadingMoreRef.current = true;
-      isPaginatingRef.current = true; // Mark as paginating to prevent observer jumps
+      isPaginatingRef.current = true; // Block observer during pagination
       setLoadingMore(true);
       const data = await fetchVideos(nextCursor);
       
       if (data.videos && data.videos.length > 0) {
-        setVideos(prev => {
-          const newTotal = prev.length + data.videos.length;
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`✅ Loaded ${data.videos.length} more videos. Total: ${prev.length} + ${data.videos.length} = ${newTotal}`);
-          }
-          return [...prev, ...data.videos];
-        });
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ Loaded ${data.videos.length} more videos. Total: ${videos.length} + ${data.videos.length} = ${videos.length + data.videos.length}`);
+        }
+        
+        // Append new videos
+        setVideos(prev => [...prev, ...data.videos]);
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
         
-        // Keep paginating flag active longer to prevent observer from triggering
-        // Clear it after 500ms to ensure DOM has fully updated and settled
+        // Brief delay to let DOM settle, then unblock observer
         setTimeout(() => {
-          // Restore scroll position
-          if (container && savedScrollTop > 0) {
-            container.scrollTop = savedScrollTop;
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`↩️ Restored scroll position to ${savedScrollTop}px`);
-            }
+          isPaginatingRef.current = false;
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ Pagination complete - observer unblocked`);
           }
-          
-          // Ensure we're still on the same video
-          if (currentIndex !== savedCurrentIndex) {
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`↩️ Restoring video index from ${currentIndex + 1} to ${savedCurrentIndex + 1}`);
-            }
-            setCurrentIndex(savedCurrentIndex);
-          }
-          
-          isPaginatingRef.current = false; // Done paginating
-        }, 500); // Increased from 100ms to 500ms for stability
+        }, 200);
         
         if (process.env.NODE_ENV === 'development') {
           console.log(`📄 Next cursor: ${data.nextCursor ? data.nextCursor.substring(0, 20) + '...' : 'none'}`);
@@ -393,100 +370,118 @@ export default function VideoFeed({
     }
   }, [fetchVideos, hasMore, nextCursor, currentIndex]);
 
-  // Intersection observer - with debouncing for quick swipes
+  // Intersection observer - CREATE ONCE, never recreate (prevents jump on pagination)
   useEffect(() => {
-    if (!isMobile || !containerRef.current || videos.length === 0) return;
+    if (!isMobile || !containerRef.current) return;
 
     const container = containerRef.current;
     let pendingUpdate: number | null = null;
     let lastActivatedIndex = -1;
 
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        // Skip processing if we're currently paginating (prevent scroll jumps)
-        if (isPaginatingRef.current) {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('⏸️ Skipping observer update during pagination');
-          }
-          return;
-        }
-        
-        // Find the most visible video
-        let mostVisible = { index: -1, ratio: 0 };
-        
-        entries.forEach((entry) => {
-          // Lower threshold for faster activation
-          if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
-            const index = parseInt(entry.target.getAttribute('data-index') || '0');
-            if (entry.intersectionRatio > mostVisible.ratio) {
-              mostVisible = { index, ratio: entry.intersectionRatio };
-            }
-          }
-        });
-
-        if (pendingUpdate) {
-          clearTimeout(pendingUpdate);
-        }
-
-        // Only activate if we found a clearly visible video and it's different from last
-        if (mostVisible.index >= 0 && mostVisible.index !== lastActivatedIndex) {
-          // Immediate activation for the first video, minimal debounce for others
-          const delay = lastActivatedIndex === -1 ? 0 : 16; // 0ms for first, 16ms (~1 frame) for others
-          
-          pendingUpdate = window.setTimeout(() => {
-            lastActivatedIndex = mostVisible.index;
-            
+    // Create observer ONCE - don't depend on videos.length
+    if (!observerRef.current) {
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          // Skip processing if we're currently paginating (prevent scroll jumps)
+          if (isPaginatingRef.current) {
             if (process.env.NODE_ENV === 'development') {
-              console.log(`👁️ Video ${mostVisible.index + 1} activated (ratio: ${mostVisible.ratio.toFixed(2)})`);
+              console.log('⏸️ Skipping observer update during pagination');
             }
-            setCurrentIndex(mostVisible.index);
-            
-            const videoId = videos[mostVisible.index]?.id;
-            // Save position with current cursor for efficient restoration
-            setLastVideoIndex(mostVisible.index, videoId, nextCursor);
-            
-            // Load more videos when user reaches 2/3 through current videos (changed from 1/3 to reduce triggers)
-            const loadMoreTrigger = Math.floor((videos.length * 2) / 3);
-            if (mostVisible.index >= loadMoreTrigger && hasMore && !loadingMore) {
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`🔄 Triggering load more at video ${mostVisible.index + 1}/${videos.length} (trigger point: ${loadMoreTrigger + 1})`);
-                console.log(`   State: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${nextCursor?.substring(0, 15)}...`);
+            return;
+          }
+          
+          // Find the most visible video
+          let mostVisible = { index: -1, ratio: 0 };
+          
+          entries.forEach((entry) => {
+            // Lower threshold for faster activation
+            if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+              const index = parseInt(entry.target.getAttribute('data-index') || '0');
+              if (entry.intersectionRatio > mostVisible.ratio) {
+                mostVisible = { index, ratio: entry.intersectionRatio };
               }
-              loadMoreVideos();
-            } else if (process.env.NODE_ENV === 'development' && mostVisible.index >= loadMoreTrigger) {
-              // Debug: why didn't we trigger?
-              console.log(`⏸️ Not triggering load more: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${!!nextCursor}`);
             }
-            
-            pendingUpdate = null;
-          }, delay); // 0ms for first video, 16ms for subsequent videos
-        }
-      },
-      {
-        root: container,
-        threshold: [0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
-        rootMargin: '10% 0px', // Reduced for immediate activation
-      }
-    );
+          });
 
-    videoRefs.current.forEach((element) => {
-      if (element && observerRef.current) {
-        observerRef.current.observe(element);
-      }
-    });
+          if (pendingUpdate) {
+            clearTimeout(pendingUpdate);
+          }
+
+          // Only activate if we found a clearly visible video and it's different from last
+          if (mostVisible.index >= 0 && mostVisible.index !== lastActivatedIndex) {
+            // Immediate activation for the first video, minimal debounce for others
+            const delay = lastActivatedIndex === -1 ? 0 : 16; // 0ms for first, 16ms (~1 frame) for others
+            
+            pendingUpdate = window.setTimeout(() => {
+              lastActivatedIndex = mostVisible.index;
+              
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`👁️ Video ${mostVisible.index + 1} activated (ratio: ${mostVisible.ratio.toFixed(2)})`);
+              }
+              setCurrentIndex(mostVisible.index);
+              
+              const videoId = videos[mostVisible.index]?.id;
+              // Save position with current cursor for efficient restoration
+              setLastVideoIndex(mostVisible.index, videoId, nextCursor);
+              
+              // Load more videos when user reaches 2/3 through current videos (changed from 1/3 to reduce triggers)
+              const loadMoreTrigger = Math.floor((videos.length * 2) / 3);
+              if (mostVisible.index >= loadMoreTrigger && hasMore && !loadingMore) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`🔄 Triggering load more at video ${mostVisible.index + 1}/${videos.length} (trigger point: ${loadMoreTrigger + 1})`);
+                  console.log(`   State: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${nextCursor?.substring(0, 15)}...`);
+                }
+                loadMoreVideos();
+              } else if (process.env.NODE_ENV === 'development' && mostVisible.index >= loadMoreTrigger) {
+                // Debug: why didn't we trigger?
+                console.log(`⏸️ Not triggering load more: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${!!nextCursor}`);
+              }
+              
+              pendingUpdate = null;
+            }, delay); // 0ms for first video, 16ms for subsequent videos
+          }
+        },
+        {
+          root: container,
+          threshold: [0, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+          rootMargin: '10% 0px', // Reduced for immediate activation
+        }
+      );
+    }
 
     return () => {
       if (pendingUpdate) {
         clearTimeout(pendingUpdate);
       }
+    };
+  }, [isMobile]); // ONLY depend on isMobile, not videos.length!
+  
+  // Cleanup observer on component unmount
+  useEffect(() => {
+    return () => {
       if (observerRef.current) {
         observerRef.current.disconnect();
         observerRef.current = null;
       }
-      // Don't clear all refs - only disconnect observer
-      // Refs will be cleaned up naturally as components unmount
     };
-  }, [isMobile, videos.length, loadMoreVideos, setLastVideoIndex]);
+  }, []);
+  
+  // Separate effect to observe new video elements as they're added
+  useEffect(() => {
+    if (!isMobile || !observerRef.current) return;
+    
+    // Observe all current video refs
+    videoRefs.current.forEach((element) => {
+      if (element) {
+        observerRef.current!.observe(element);
+      }
+    });
+    
+    // Cleanup: unobserve elements that were removed
+    return () => {
+      // Don't disconnect the whole observer, just let elements be garbage collected
+    };
+  }, [isMobile, videos.length]); // This can depend on videos.length - just observes new elements
 
   // Keyboard navigation with passive listeners
   useEffect(() => {
