@@ -470,6 +470,8 @@ function VideoPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    
+    let rafId: number | null = null;
 
     if (!isActive) {
       // PENTUPLE SAFETY: Aggressively stop ALL audio
@@ -501,7 +503,7 @@ function VideoPlayer({
       video.dataset.active = 'false';
       
       // 6. Use requestAnimationFrame for extra safety (next frame)
-      requestAnimationFrame(() => {
+      rafId = requestAnimationFrame(() => {
         if (video && !video.paused) {
           video.pause();
           video.muted = true;
@@ -535,7 +537,7 @@ function VideoPlayer({
       // Mark as active
       video.dataset.active = 'true';
       
-      // Restore mute state
+      // Restore mute state IMMEDIATELY
       video.muted = isMuted;
       video.volume = isMuted ? 0 : 1;
       
@@ -552,6 +554,13 @@ function VideoPlayer({
         console.log('▶️ Video activated - ready to play');
       }
     }
+    
+    // Cleanup: cancel pending requestAnimationFrame if component re-renders
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
   }, [isActive, isMuted]);
 
   // Playback control - ONLY play when active
@@ -575,40 +584,46 @@ function VideoPlayer({
     video.volume = isMuted ? 0 : 1;
 
     if (shouldPlay) {
-      // Track time from entering view to playback start
-      playbackStartTimeRef.current = performance.now();
+      // Ensure video is ready before playing
+      const attemptPlay = () => {
+        playbackStartTimeRef.current = performance.now();
+        
+        video.play()
+          .then(() => {
+            const startupTime = performance.now() - playbackStartTimeRef.current;
+            
+            // Report startup time for metrics tracking
+            reportVideoStartup(startupTime, shouldPreload);
+            
+            if (process.env.NODE_ENV === 'development') {
+              const status = startupTime < 200 ? '✅' : '⚠️';
+              console.log(`${status} Video startup: ${startupTime.toFixed(0)}ms (target: < 200ms)`);
+            }
+            setShowPlayButton(false);
+            setIsLoading(false); // Clear loading on successful play
+            
+            // Clear safety timeout - video is playing now
+            if (loadingTimeoutRef.current) {
+              clearTimeout(loadingTimeoutRef.current);
+              loadingTimeoutRef.current = null;
+            }
+          })
+          .catch(err => {
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('⚠️ Play failed:', err.message, 'readyState:', video.readyState);
+            }
+            // Only show play button if it's a user interaction error
+            if (err.name === 'NotAllowedError') {
+              setShowPlayButton(true);
+            } else if (video.readyState < 2) {
+              // Video not ready yet - retry when it's ready
+              video.addEventListener('canplay', attemptPlay, { once: true });
+            }
+          });
+      };
       
-      // Try to play immediately, even if still loading
-      video.play()
-        .then(() => {
-          const startupTime = performance.now() - playbackStartTimeRef.current;
-          
-          // Report startup time for metrics tracking
-          reportVideoStartup(startupTime, shouldPreload);
-          
-          if (process.env.NODE_ENV === 'development') {
-            const status = startupTime < 200 ? '✅' : '⚠️';
-            console.log(`${status} Video startup: ${startupTime.toFixed(0)}ms (target: < 200ms)`);
-          }
-          setShowPlayButton(false);
-          setIsLoading(false); // Clear loading on successful play
-          
-          // Clear safety timeout - video is playing now
-          if (loadingTimeoutRef.current) {
-            clearTimeout(loadingTimeoutRef.current);
-            loadingTimeoutRef.current = null;
-          }
-        })
-        .catch(err => {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('⚠️ Play failed:', err.message);
-          }
-          // Only show play button if it's a user interaction error
-          if (err.name === 'NotAllowedError') {
-            setShowPlayButton(true);
-          }
-          // Don't block playback for other errors - let it try again
-        });
+      // Small delay to ensure cleanup has finished
+      setTimeout(attemptPlay, 50);
     } else {
       // Pause when shouldPlay is false (keyboard shortcut)
       video.pause();
@@ -629,8 +644,13 @@ function VideoPlayer({
 
     const onPause = () => {
       setIsPlaying(false);
-      // Show play button when paused manually (if active)
-      if (isActive) {
+      // Only show play button if manually paused (not during transitions)
+      // Check if video should be playing - if so, don't show button
+      if (isActive && shouldPlay) {
+        // Video is paused but should be playing - this is a transition or error
+        // Don't show play button
+      } else if (isActive) {
+        // Video was manually paused - show play button
         setShowPlayButton(true);
       }
     };
@@ -743,7 +763,7 @@ function VideoPlayer({
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('error', onError);
     };
-  }, [retryVideo, error, retryCount, isActive]);
+  }, [retryVideo, error, retryCount, isActive, shouldPlay]);
 
   if (!currentVideo) {
     return (
