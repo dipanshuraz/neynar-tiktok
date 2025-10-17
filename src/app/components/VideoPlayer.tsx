@@ -422,17 +422,29 @@ function VideoPlayer({
   }, [currentVideo?.url, isActive, shouldPreload, networkSpeed, retryCount, retryVideo]); // Include all dependencies
 
   // CRITICAL: Immediate pause when becoming inactive (prevent audio overlap)
+  // This MUST run BEFORE any play effects - use layout effect timing
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (!isActive) {
-      // IMMEDIATELY stop playback to prevent audio overlap
-      video.pause();
-      video.muted = true;
-      video.volume = 0; // Extra safety: set volume to 0
+      // PENTUPLE SAFETY: Aggressively stop ALL audio
       
-      // Stop HLS loading if using HLS
+      // 1. Pause IMMEDIATELY (synchronous)
+      video.pause();
+      
+      // 2. Mute and zero volume (double safety)
+      video.muted = true;
+      video.volume = 0;
+      
+      // 3. Set currentTime to 0 (prevents audio glitches)
+      try {
+        video.currentTime = 0;
+      } catch (err) {
+        // Ignore - might not be seekable yet
+      }
+      
+      // 4. Stop HLS loading to prevent buffering audio
       if (hlsRef.current) {
         try {
           hlsRef.current.stopLoad();
@@ -441,17 +453,49 @@ function VideoPlayer({
         }
       }
       
-      // Reset to start to prevent audio glitches on next activation
-      video.currentTime = 0;
+      // 5. Set data attribute to mark as inactive (for CSS/debug)
+      video.dataset.active = 'false';
+      
+      // 6. Use requestAnimationFrame for extra safety (next frame)
+      requestAnimationFrame(() => {
+        if (video && !video.paused) {
+          video.pause();
+          video.muted = true;
+          video.volume = 0;
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('⚠️ Video was still playing after pause! Force stopped again.');
+          }
+        }
+      });
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('⏸️ Video STOPPED immediately (inactive) - audio should be silent');
+        console.log('⏸️ Video STOPPED (inactive) - 5-layer audio kill');
       }
     } else if (isActive) {
-      // Resume loading when active
-      video.muted = isMuted; // Restore mute state
-      video.volume = isMuted ? 0 : 1; // Restore volume
+      // GLOBAL SAFETY: Pause ALL other videos on the page
+      // This catches any videos that might have slipped through
+      if (typeof document !== 'undefined') {
+        const allVideos = document.querySelectorAll('video');
+        allVideos.forEach((otherVideo) => {
+          if (otherVideo !== video && !otherVideo.paused) {
+            otherVideo.pause();
+            otherVideo.muted = true;
+            otherVideo.volume = 0;
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('🚨 Found rogue playing video! Force stopped.');
+            }
+          }
+        });
+      }
       
+      // Mark as active
+      video.dataset.active = 'true';
+      
+      // Restore mute state
+      video.muted = isMuted;
+      video.volume = isMuted ? 0 : 1;
+      
+      // Resume HLS loading
       if (hlsRef.current) {
         try {
           hlsRef.current.startLoad();
