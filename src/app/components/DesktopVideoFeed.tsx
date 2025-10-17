@@ -26,30 +26,14 @@ export default function DesktopVideoFeed({
   const [isLiked, setIsLiked] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [showComments, setShowComments] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false); // Track play state - starts paused for first video
-  const [hasStartedPlaying, setHasStartedPlaying] = useState(false); // Track if user has started playing
+  const [isPlaying, setIsPlaying] = useState(true); // Track play state - starts playing
 
   const currentVideo = videos[currentIndex];
   
   // Toggle play/pause state
   const handlePlayPauseToggle = () => {
-    setIsPlaying(prev => {
-      const newState = !prev;
-      if (newState) {
-        setHasStartedPlaying(true); // Mark that user has started playing
-      }
-      return newState;
-    });
+    setIsPlaying(prev => !prev);
   };
-  
-  // When video changes, autoplay if user has already started playing once
-  useEffect(() => {
-    if (hasStartedPlaying) {
-      setIsPlaying(true); // Continue playing next videos
-    } else {
-      setIsPlaying(false); // First video requires manual play
-    }
-  }, [currentIndex, hasStartedPlaying]);
   
   if (!currentVideo) return null;
 
