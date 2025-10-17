@@ -35,6 +35,11 @@ export default function DesktopVideoFeed({
     setIsPlaying(false);
   }, [currentIndex]);
   
+  // Toggle play/pause state
+  const handlePlayPauseToggle = () => {
+    setIsPlaying(prev => !prev);
+  };
+  
   if (!currentVideo) return null;
 
   const { cast } = currentVideo;
@@ -90,6 +95,7 @@ export default function DesktopVideoFeed({
               onMuteToggle={onMuteToggle}
               className="w-full h-full"
               shouldPlay={isPlaying}
+              onPlayPauseToggle={handlePlayPauseToggle}
               castHash={cast.hash}
               authorUsername={cast.author.username}
               castText={cast.text}

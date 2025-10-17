@@ -561,6 +561,8 @@ export default function VideoFeed({
       if (process.env.NODE_ENV === 'development') {
         console.log('✅ Already have SSR videos, skipping fetch');
       }
+      // Ensure loading is set to false when we have SSR videos
+      setLoading(false);
       return;
     }
     
@@ -613,6 +615,11 @@ export default function VideoFeed({
         <div className="text-center">
           <Icon icon="svg-spinners:ring-resize" className="w-12 h-12 text-white mb-4 mx-auto" />
           <p className="text-white">Loading videos...</p>
+          {process.env.NODE_ENV === 'development' && (
+            <p className="text-white/50 text-xs mt-2">
+              Debug: loading={loading.toString()}, videos.length={videos.length}, preferencesLoaded={preferencesLoaded.toString()}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -636,10 +643,24 @@ export default function VideoFeed({
     );
   }
 
-  if (videos.length === 0) {
+  if (videos.length === 0 && !loading) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
-        <p className="text-white">No videos found</p>
+        <div className="text-center p-8">
+          <p className="text-white mb-4">No videos found</p>
+          <button
+            onClick={loadInitialVideos}
+            className="px-6 py-3 bg-white/10 text-white rounded-full hover:bg-white/20"
+          >
+            <RefreshCw className="w-4 h-4 inline mr-2" />
+            Reload
+          </button>
+          {process.env.NODE_ENV === 'development' && (
+            <p className="text-white/50 text-xs mt-4">
+              Check console for API errors. Ensure NEXT_PUBLIC_NEYNAR_API_KEY is set in .env.local
+            </p>
+          )}
+        </div>
       </div>
     );
   }

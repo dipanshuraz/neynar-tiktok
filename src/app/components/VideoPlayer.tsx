@@ -39,6 +39,7 @@ interface VideoPlayerProps {
   shouldPreload?: boolean;
   networkSpeed?: NetworkSpeed;
   shouldPlay?: boolean;
+  onPlayPauseToggle?: () => void;
   castHash?: string;
   authorUsername?: string;
   castText?: string;
@@ -53,6 +54,7 @@ function VideoPlayer({
   shouldPreload = false,
   networkSpeed = 'medium',
   shouldPlay = true,
+  onPlayPauseToggle,
   castHash,
   authorUsername,
   castText
@@ -767,8 +769,12 @@ function VideoPlayer({
         videoRef.current.play();
         userPausedRef.current = false;
       }
+      // Notify parent component of play/pause toggle
+      if (onPlayPauseToggle) {
+        onPlayPauseToggle();
+      }
     }
-  }, [isPlaying]);
+  }, [isPlaying, onPlayPauseToggle]);
 
   const handleMuteToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
