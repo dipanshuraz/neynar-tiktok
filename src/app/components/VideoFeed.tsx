@@ -71,6 +71,7 @@ export default function VideoFeed({
   const videoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const isPaginatingRef = useRef(false); // Track if we're currently paginating
+  const lastActivatedIndexRef = useRef(-1); // Track last activated video (persists across re-renders)
   
   // Track first interaction timing
   const firstInteraction = useFirstInteraction();
@@ -81,10 +82,7 @@ export default function VideoFeed({
   // Monitor network quality for adaptive preloading
   const networkInfo = useNetworkQuality();
   
-  // Mark as hydrated on client mount (for SSR)
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
+  // Note: setIsHydrated already called in mount effect above (line 57)
   
   // Sync isMuted state with preferences when they load from localStorage
   useEffect(() => {
@@ -376,7 +374,6 @@ export default function VideoFeed({
 
     const container = containerRef.current;
     let pendingUpdate: number | null = null;
-    let lastActivatedIndex = -1;
 
     // Create observer ONCE - don't depend on videos.length
     if (!observerRef.current) {
@@ -408,36 +405,19 @@ export default function VideoFeed({
           }
 
           // Only activate if we found a clearly visible video and it's different from last
-          if (mostVisible.index >= 0 && mostVisible.index !== lastActivatedIndex) {
+          if (mostVisible.index >= 0 && mostVisible.index !== lastActivatedIndexRef.current) {
             // Immediate activation for the first video, minimal debounce for others
-            const delay = lastActivatedIndex === -1 ? 0 : 16; // 0ms for first, 16ms (~1 frame) for others
+            const delay = lastActivatedIndexRef.current === -1 ? 0 : 16; // 0ms for first, 16ms (~1 frame) for others
             
             pendingUpdate = window.setTimeout(() => {
-              lastActivatedIndex = mostVisible.index;
+              lastActivatedIndexRef.current = mostVisible.index;
               
               if (process.env.NODE_ENV === 'development') {
                 console.log(`👁️ Video ${mostVisible.index + 1} activated (ratio: ${mostVisible.ratio.toFixed(2)})`);
               }
               setCurrentIndex(mostVisible.index);
               
-              const videoId = videos[mostVisible.index]?.id;
-              // Save position with current cursor for efficient restoration
-              setLastVideoIndex(mostVisible.index, videoId, nextCursor);
-              
-              // Load more videos when user reaches 2/3 through current videos (changed from 1/3 to reduce triggers)
-              const loadMoreTrigger = Math.floor((videos.length * 2) / 3);
-              if (mostVisible.index >= loadMoreTrigger && hasMore && !loadingMore) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.log(`🔄 Triggering load more at video ${mostVisible.index + 1}/${videos.length} (trigger point: ${loadMoreTrigger + 1})`);
-                  console.log(`   State: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${nextCursor?.substring(0, 15)}...`);
-                }
-                loadMoreVideos();
-              } else if (process.env.NODE_ENV === 'development' && mostVisible.index >= loadMoreTrigger) {
-                // Debug: why didn't we trigger?
-                console.log(`⏸️ Not triggering load more: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${!!nextCursor}`);
-              }
-              
-              pendingUpdate = null;
+              // These will use the latest values from closure
             }, delay); // 0ms for first video, 16ms for subsequent videos
           }
         },
@@ -454,7 +434,28 @@ export default function VideoFeed({
         clearTimeout(pendingUpdate);
       }
     };
-  }, [isMobile]); // ONLY depend on isMobile, not videos.length!
+  }, [isMobile]);
+  
+  // Separate effect for video activation logic (uses latest state)
+  useEffect(() => {
+    if (!isMobile || currentIndex < 0) return;
+    
+    // Save position whenever currentIndex changes
+    const videoId = videos[currentIndex]?.id;
+    if (videoId) {
+      setLastVideoIndex(currentIndex, videoId, nextCursor);
+    }
+    
+    // Load more videos when user reaches 2/3 through current videos
+    const loadMoreTrigger = Math.floor((videos.length * 2) / 3);
+    if (currentIndex >= loadMoreTrigger && hasMore && !loadingMore && !loadingMoreRef.current) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔄 Triggering load more at video ${currentIndex + 1}/${videos.length} (trigger point: ${loadMoreTrigger + 1})`);
+        console.log(`   State: hasMore=${hasMore}, loadingMore=${loadingMore}, nextCursor=${nextCursor?.substring(0, 15)}...`);
+      }
+      loadMoreVideos();
+    }
+  }, [isMobile, currentIndex, videos, videos.length, hasMore, loadingMore, nextCursor, setLastVideoIndex, loadMoreVideos]);
   
   // Cleanup observer on component unmount
   useEffect(() => {
