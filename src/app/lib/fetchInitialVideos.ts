@@ -115,6 +115,7 @@ async function fetchFromNeynar(limit: number = 25): Promise<NeynarFeedResponse> 
   url.searchParams.set('feed_type', 'filter');
   url.searchParams.set('filter_type', 'embed_types');
   url.searchParams.set('embed_types', 'video');
+  url.searchParams.set('members_only', 'true'); // Only show casts from Farcaster members
   url.searchParams.set('with_recasts', 'true');
   url.searchParams.set('limit', '50'); // Request more to ensure we get enough videos after filtering
 

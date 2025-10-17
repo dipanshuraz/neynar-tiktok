@@ -119,6 +119,7 @@ async function fetchFromNeynar(cursor?: string, limit: number = 25): Promise<Ney
   url.searchParams.set('feed_type', 'filter');
   url.searchParams.set('filter_type', 'embed_types');
   url.searchParams.set('embed_types', 'video');
+  url.searchParams.set('members_only', 'true'); // Only show casts from Farcaster members
   url.searchParams.set('with_recasts', 'true');
   url.searchParams.set('limit', limit.toString());
   
