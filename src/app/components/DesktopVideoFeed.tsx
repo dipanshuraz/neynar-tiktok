@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Heart, MessageCircle, Share, Plus, MoreHorizontal } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import { VideoFeedItem } from '@/types/neynar';
@@ -26,8 +26,14 @@ export default function DesktopVideoFeed({
   const [isLiked, setIsLiked] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false); // Track play state - starts paused
 
   const currentVideo = videos[currentIndex];
+  
+  // Reset play state when video changes (require manual play for each video)
+  useEffect(() => {
+    setIsPlaying(false);
+  }, [currentIndex]);
   
   if (!currentVideo) return null;
 
@@ -83,6 +89,7 @@ export default function DesktopVideoFeed({
               isMuted={isMuted}
               onMuteToggle={onMuteToggle}
               className="w-full h-full"
+              shouldPlay={isPlaying}
               castHash={cast.hash}
               authorUsername={cast.author.username}
               castText={cast.text}

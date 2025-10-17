@@ -564,16 +564,56 @@ function VideoPlayer({
       // Video is ready - play immediately
       attemptPlay();
     } else {
-      // Wait for video to be ready
+      // Wait for video to be ready - use multiple event listeners for better coverage
       const onCanPlay = () => {
         if (isActive && playingRef.current) {
           attemptPlay();
         }
       };
+      
+      // Add multiple listeners to ensure we catch when video is ready
       video.addEventListener('canplay', onCanPlay, { once: true });
+      video.addEventListener('loadeddata', onCanPlay, { once: true });
+      
+      // Also try to play on canplaythrough for smoother experience
+      const onCanPlayThrough = () => {
+        if (isActive && playingRef.current && video.paused) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🎬 Attempting play on canplaythrough');
+          }
+          attemptPlay();
+        }
+      };
+      video.addEventListener('canplaythrough', onCanPlayThrough, { once: true });
     }
     
   }, [isActive, isMuted, shouldPlay, error, shouldPreload]);
+
+  // Auto-play when video URL changes and video is active
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isActive || !currentVideo?.url) return;
+    
+    // When a new video loads and becomes active, ensure autoplay
+    const handleLoadedData = () => {
+      if (isActive && shouldPlay && playingRef.current) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🎬 Auto-playing new video on loadeddata');
+        }
+        video.play().catch((err) => {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('⚠️ Autoplay on loadeddata failed:', err.message);
+          }
+        });
+      }
+    };
+    
+    video.addEventListener('loadeddata', handleLoadedData);
+    
+    return () => {
+      video.removeEventListener('loadeddata', handleLoadedData);
+    };
+  }, [currentVideo?.url, isActive, shouldPlay]);
 
   // Video events
   useEffect(() => {
@@ -776,6 +816,7 @@ function VideoPlayer({
         loop
         muted={isMuted}
         playsInline
+        autoPlay
         preload="auto"
         poster={currentVideo.thumbnail}
         {...((isActive || shouldPreload) ? { fetchpriority: 'high' as const } : {})}
