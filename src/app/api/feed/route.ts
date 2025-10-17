@@ -19,7 +19,9 @@ class UniversalVideoParser {
 
       const videoInfo = this.detectVideoType(embed.url);
       if (videoInfo) {
-        console.log(`✅ Found ${videoInfo.type.toUpperCase()} video:`, embed.url);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ Found ${videoInfo.type.toUpperCase()} video:`, embed.url);
+        }
         
         videos.push({
           url: embed.url,
@@ -39,7 +41,9 @@ class UniversalVideoParser {
         if (videoUrl) {
           const videoInfo = this.detectVideoType(videoUrl);
           if (videoInfo) {
-            console.log(`✅ Found ${videoInfo.type.toUpperCase()} video in metadata:`, videoUrl);
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`✅ Found ${videoInfo.type.toUpperCase()} video in metadata:`, videoUrl);
+            }
             
             videos.push({
               url: videoUrl,
@@ -88,14 +92,18 @@ class UniversalVideoParser {
 function processVideoFeed(casts: Cast[]): VideoFeedItem[] {
   const videoItems: VideoFeedItem[] = [];
 
-  console.log(`🔍 Processing ${casts.length} casts for videos (all formats)...`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`🔍 Processing ${casts.length} casts for videos (all formats)...`);
+  }
 
   for (const cast of casts) {
     const videos = UniversalVideoParser.extractVideosFromCast(cast);
     
     if (videos.length > 0) {
-      const types = videos.map(v => v.videoType.toUpperCase()).join(', ');
-      console.log(`✅ Cast by @${cast.author.username} has ${videos.length} video(s): ${types}`);
+      if (process.env.NODE_ENV === 'development') {
+        const types = videos.map(v => v.videoType.toUpperCase()).join(', ');
+        console.log(`✅ Cast by @${cast.author.username} has ${videos.length} video(s): ${types}`);
+      }
       videoItems.push({
         id: cast.hash,
         cast,
@@ -104,7 +112,9 @@ function processVideoFeed(casts: Cast[]): VideoFeedItem[] {
     }
   }
 
-  console.log(`📊 Total video items: ${videoItems.length}`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`📊 Total video items: ${videoItems.length}`);
+  }
   return videoItems;
 }
 
@@ -125,9 +135,13 @@ async function fetchFromNeynar(cursor?: string, limit: number = 25): Promise<Ney
   
   if (cursor) {
     url.searchParams.set('cursor', cursor);
-    console.log(`🌐 Fetching from Neynar with cursor: ${cursor.substring(0, 20)}...`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🌐 Fetching from Neynar with cursor: ${cursor.substring(0, 20)}...`);
+    }
   } else {
-    console.log(`🌐 Fetching initial videos from Neynar (limit: ${limit})...`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🌐 Fetching initial videos from Neynar (limit: ${limit})...`);
+    }
   }
 
   const response = await fetch(url.toString(), {
@@ -145,12 +159,14 @@ async function fetchFromNeynar(cursor?: string, limit: number = 25): Promise<Ney
   }
 
   const data = await response.json();
-  console.log(`✅ Fetched ${data.casts?.length || 0} video casts from Neynar`);
-  
-  if (data.next?.cursor) {
-    console.log(`📄 Next cursor available: ${data.next.cursor.substring(0, 20)}...`);
-  } else {
-    console.log(`🏁 No more videos available`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`✅ Fetched ${data.casts?.length || 0} video casts from Neynar`);
+    
+    if (data.next?.cursor) {
+      console.log(`📄 Next cursor available: ${data.next.cursor.substring(0, 20)}...`);
+    } else {
+      console.log(`🏁 No more videos available`);
+    }
   }
   
   return data;
@@ -160,7 +176,9 @@ async function fetchFromLocal(fid?: string): Promise<NeynarFeedResponse> {
   const filePath = path.join(process.cwd(), 'data', 'casts-3.json');
   const fileContents = await fs.readFile(filePath, 'utf8');
   const data = JSON.parse(fileContents);
-  console.log(`✅ Loaded ${data.casts?.length || 0} casts from local file`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`✅ Loaded ${data.casts?.length || 0} casts from local file`);
+  }
   return data;
 }
 
@@ -170,10 +188,12 @@ export async function GET(request: NextRequest) {
     const cursor = searchParams.get('cursor') || undefined;
     const limit = parseInt(searchParams.get('limit') || '25');
     
-    console.log(`\n📡 === Feed API Request ===`);
-    console.log(`Mode: ${USE_LOCAL_DATA ? 'LOCAL' : 'NEYNAR'}`);
-    console.log(`Cursor: ${cursor || 'none'}`);
-    console.log(`Limit: ${limit}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`\n📡 === Feed API Request ===`);
+      console.log(`Mode: ${USE_LOCAL_DATA ? 'LOCAL' : 'NEYNAR'}`);
+      console.log(`Cursor: ${cursor || 'none'}`);
+      console.log(`Limit: ${limit}`);
+    }
     
     const neynarData = USE_LOCAL_DATA 
       ? await fetchFromLocal() 
@@ -183,16 +203,18 @@ export async function GET(request: NextRequest) {
     const allVideoItems = processVideoFeed(neynarData.casts || []);
     
     if (allVideoItems.length === 0) {
-      console.warn('⚠️ No videos found in the feed');
-      
-      // Log sample cast to help debug
-      if (neynarData.casts && neynarData.casts.length > 0) {
-        const sampleCast = neynarData.casts[0];
-        console.log('📝 Sample cast structure:', {
-          author: sampleCast.author.username,
-          embedsCount: sampleCast.embeds.length,
-          firstEmbed: sampleCast.embeds[0],
-        });
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('⚠️ No videos found in the feed');
+        
+        // Log sample cast to help debug
+        if (neynarData.casts && neynarData.casts.length > 0) {
+          const sampleCast = neynarData.casts[0];
+          console.log('📝 Sample cast structure:', {
+            author: sampleCast.author.username,
+            embedsCount: sampleCast.embeds.length,
+            firstEmbed: sampleCast.embeds[0],
+          });
+        }
       }
       
       return NextResponse.json({
@@ -215,7 +237,9 @@ export async function GET(request: NextRequest) {
       // Simple index-based pagination for local data
       const startIndex = cursor ? parseInt(cursor) : 0;
       const endIndex = startIndex + limit;
-      console.log(`📄 Local pagination: ${startIndex} to ${endIndex} of ${allVideoItems.length}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📄 Local pagination: ${startIndex} to ${endIndex} of ${allVideoItems.length}`);
+      }
       paginatedItems = allVideoItems.slice(startIndex, endIndex);
       hasMore = endIndex < allVideoItems.length;
       nextCursor = hasMore ? endIndex.toString() : undefined;
@@ -235,19 +259,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`✅ Returning ${paginatedItems.length} videos`);
-    console.log(`📄 Next cursor: ${nextCursor ? nextCursor.substring(0, 20) + '...' : 'none'}`);
-    console.log(`🔄 Has more: ${hasMore}`);
-    
-    // Log first video for debugging
-    if (paginatedItems.length > 0) {
-      const firstVideo = paginatedItems[0];
-      console.log('📹 First video:', {
-        author: firstVideo.cast.author.username,
-        videoCount: firstVideo.videos.length,
-        videoType: firstVideo.videos[0]?.videoType,
-        url: firstVideo.videos[0]?.url?.substring(0, 50) + '...',
-      });
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ Returning ${paginatedItems.length} videos`);
+      console.log(`📄 Next cursor: ${nextCursor ? nextCursor.substring(0, 20) + '...' : 'none'}`);
+      console.log(`🔄 Has more: ${hasMore}`);
+      
+      // Log first video for debugging
+      if (paginatedItems.length > 0) {
+        const firstVideo = paginatedItems[0];
+        console.log('📹 First video:', {
+          author: firstVideo.cast.author.username,
+          videoCount: firstVideo.videos.length,
+          videoType: firstVideo.videos[0]?.videoType,
+          url: firstVideo.videos[0]?.url?.substring(0, 50) + '...',
+        });
+      }
     }
     
     return NextResponse.json({
