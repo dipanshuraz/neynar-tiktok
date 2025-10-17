@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useRef, useState, memo, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, memo, useCallback } from 'react';
 import { ProcessedVideo } from '@/types/neynar';
 import { Play, Volume2, VolumeX, AlertCircle, Share2 } from 'lucide-react';
 import { Icon } from '@iconify/react';
@@ -26,11 +26,8 @@ async function getHls() {
 }
 
 // Eagerly start loading HLS.js on first module load (parallel with app init)
-// This reduces the delay when the first video needs it
 if (typeof window !== 'undefined') {
-  getHls().catch(() => {
-    // Silently ignore errors - will retry when needed
-  });
+  getHls().catch(() => {});
 }
 
 interface VideoPlayerProps {
@@ -39,12 +36,12 @@ interface VideoPlayerProps {
   isMuted: boolean;
   onMuteToggle: () => void;
   className?: string;
-  shouldPreload?: boolean; // Preload video in background for fast startup
-  networkSpeed?: NetworkSpeed; // Adapt HLS settings based on network
-  shouldPlay?: boolean; // External play/pause control (for keyboard shortcuts)
-  castHash?: string; // For sharing
-  authorUsername?: string; // For sharing
-  castText?: string; // For sharing
+  shouldPreload?: boolean;
+  networkSpeed?: NetworkSpeed;
+  shouldPlay?: boolean;
+  castHash?: string;
+  authorUsername?: string;
+  castText?: string;
 }
 
 function VideoPlayer({ 
@@ -65,24 +62,27 @@ function VideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPlayButton, setShowPlayButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(!isActive); // Start optimistic for active video
+  const [isLoading, setIsLoading] = useState(!isActive);
   const [retryCount, setRetryCount] = useState(0);
   const [showPoster, setShowPoster] = useState(false);
-  const [isVerticalVideo, setIsVerticalVideo] = useState(true); // Track if video is 9:16 (vertical)
-  const [showShareToast, setShowShareToast] = useState(false); // Share feedback
+  const [isVerticalVideo, setIsVerticalVideo] = useState(true);
+  const [showShareToast, setShowShareToast] = useState(false);
   const preloadStartTimeRef = useRef<number>(0);
   const playbackStartTimeRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Safety timeout for infinite loading
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Track if pause was triggered by user (not programmatic)
+  const userPausedRef = useRef(false);
+  // Track if we're in the middle of a play attempt
+  const playingRef = useRef(false);
 
-  // Track memory usage in development
   useComponentMemoryTracking('VideoPlayer');
 
   const currentVideo = videos?.[0];
   
   // Reset vertical state when video URL changes
   useEffect(() => {
-    // Reset to true (assume vertical) when URL changes, will update after metadata loads
     setIsVerticalVideo(true);
   }, [currentVideo?.url]);
   
@@ -97,33 +97,24 @@ function VideoPlayer({
       
       if (width && height) {
         const aspectRatio = width / height;
-        // 9:16 aspect ratio is 0.5625. Allow some tolerance (0.5 to 0.6)
-        // This catches 9:16, but not 16:9 (1.777) or square (1.0)
         const isVertical = aspectRatio >= 0.5 && aspectRatio <= 0.6;
         setIsVerticalVideo(isVertical);
         
         if (process.env.NODE_ENV === 'development') {
-          console.log(`📐 Video aspect ratio: ${aspectRatio.toFixed(3)} (${width}x${height}) - ${isVertical ? 'Vertical (cover)' : 'Non-vertical (contain)'}`);
+          console.log(`📐 Video aspect ratio: ${aspectRatio.toFixed(3)} (${width}x${height}) - ${isVertical ? 'Vertical' : 'Non-vertical'}`);
         }
       }
     };
 
     video.addEventListener('loadedmetadata', checkAspectRatio);
-    
-    // Check immediately if metadata already loaded
-    if (video.readyState >= 1) {
-      checkAspectRatio();
-    }
+    if (video.readyState >= 1) checkAspectRatio();
 
-    return () => {
-      video.removeEventListener('loadedmetadata', checkAspectRatio);
-    };
+    return () => video.removeEventListener('loadedmetadata', checkAspectRatio);
   }, [currentVideo?.width, currentVideo?.height, currentVideo?.url]);
 
   // Share handler
   const handleShare = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
     if (!castHash || !authorUsername) return;
     
     const shareUrl = `https://warpcast.com/${authorUsername}/${castHash.slice(0, 10)}`;
@@ -160,12 +151,11 @@ function VideoPlayer({
       if (process.env.NODE_ENV === 'development') {
         console.error(`❌ Max retries (${maxRetries}) reached for video`);
       }
-      setShowPoster(true); // Show poster after max retries
+      setShowPoster(true);
       setIsLoading(false);
       return;
     }
     
-    // Exponential backoff: 1s, 2s, 4s
     const delay = Math.pow(2, retryCount) * 1000;
     
     if (process.env.NODE_ENV === 'development') {
@@ -179,19 +169,14 @@ function VideoPlayer({
     }, delay);
   }, [retryCount]);
 
-  // Setup Video - ALWAYS load video as soon as component mounts (aggressive preloading)
+  // Setup Video - Load video source
   useEffect(() => {
-    // ALWAYS load video immediately for instant playback
-    // Don't wait for shouldPreload or isActive
-    if (!videoRef.current || !currentVideo?.url) {
-      return;
-    }
+    if (!videoRef.current || !currentVideo?.url) return;
 
     const video = videoRef.current;
     const videoUrl = currentVideo.url;
     const videoType = currentVideo.videoType;
 
-    // Track load start time
     preloadStartTimeRef.current = performance.now();
     
     if (process.env.NODE_ENV === 'development') {
@@ -199,24 +184,22 @@ function VideoPlayer({
       console.log(`${status} loading ${videoType.toUpperCase()}:`, videoUrl.substring(0, 50) + '...');
     }
     
-    // Only show loading spinner after a delay for active videos (avoid flicker)
+    // Loading spinner logic
     if (isActive) {
       const loadingTimer = setTimeout(() => setIsLoading(true), 300);
       const cleanup = () => clearTimeout(loadingTimer);
       video.addEventListener('canplay', cleanup, { once: true });
       video.addEventListener('error', cleanup, { once: true });
       
-      // Safety timeout: If video doesn't load within 20 seconds on mobile (10s desktop), show error
+      // Safety timeout
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const safetyTimeout = isMobile ? 20000 : 10000;
       loadingTimeoutRef.current = setTimeout(() => {
-        // Check VIDEO STATE not isLoading state (which may be stale)
         if (video.readyState < 2 && video.networkState !== HTMLMediaElement.NETWORK_IDLE) {
           if (process.env.NODE_ENV === 'development') {
-            console.warn('⏱️ Video loading timeout - forcing error state', {
+            console.warn('⏱️ Video loading timeout', {
               readyState: video.readyState,
               networkState: video.networkState,
-              paused: video.paused
             });
           }
           setError('Video took too long to load. Please try again.');
@@ -229,7 +212,7 @@ function VideoPlayer({
     }
     setError(null);
 
-    // Clean up previous HLS instance only if URL is changing
+    // Clean up previous HLS instance if URL changed
     if (hlsRef.current) {
       const prevUrl = hlsRef.current.url;
       if (prevUrl !== videoUrl) {
@@ -239,7 +222,6 @@ function VideoPlayer({
         hlsRef.current.destroy();
         hlsRef.current = null;
       } else {
-        // Same URL - reuse existing HLS instance
         if (process.env.NODE_ENV === 'development') {
           console.log('♻️ Reusing HLS instance for same URL');
         }
@@ -254,11 +236,9 @@ function VideoPlayer({
       }
       video.src = videoUrl;
       video.load();
-      // Let video events handle isLoading state
       return;
     }
 
-    // HLS format - use Safari native or HLS.js
     // Safari native HLS
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       if (process.env.NODE_ENV === 'development') {
@@ -266,11 +246,10 @@ function VideoPlayer({
       }
       video.src = videoUrl;
       video.load();
-      // Don't set isLoading to false - let the video events handle it
       return;
     }
 
-    // HLS.js - Load dynamically to reduce initial bundle
+    // HLS.js setup
     const setupHls = async () => {
       const HlsClass = await getHls();
       
@@ -282,39 +261,30 @@ function VideoPlayer({
       }
 
       const bufferSettings = getHLSBufferSettings(networkSpeed);
-      
-      // Mobile-friendly timeouts - mobile networks can be slower than desktop
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const timeoutMultiplier = isMobile ? 2 : 1; // LONGER timeouts on mobile (not shorter!)
-      
-      // Ultra-low latency settings for preloading
+      const timeoutMultiplier = isMobile ? 2 : 1;
       const isPreloading = shouldPreload && !isActive;
       
       const hls = new HlsClass({
-        debug: false, // Disable debug in production for performance
+        debug: false,
         enableWorker: true,
-        // Ultra-low buffer for fast startup on preload, larger buffer on active for smooth playback
-        maxBufferLength: isPreloading ? 2 : (isMobile ? 10 : bufferSettings.maxBufferLength), // Larger buffer on mobile active video
+        maxBufferLength: isPreloading ? 2 : (isMobile ? 10 : bufferSettings.maxBufferLength),
         maxMaxBufferLength: isPreloading ? 3 : (isMobile ? 15 : bufferSettings.maxMaxBufferLength),
         maxBufferSize: isPreloading ? 0.5 * 1000 * 1000 : bufferSettings.maxBufferSize,
-        maxBufferHole: 0.5, // More tolerant of gaps
-        lowLatencyMode: !isMobile, // Disable low latency mode on mobile for stability
-        backBufferLength: 0, // Don't keep old segments
-        // More generous manifest loading timeouts for mobile networks
-        manifestLoadingTimeOut: 8000 * timeoutMultiplier, // 8s desktop, 16s mobile
-        manifestLoadingMaxRetry: 3, // More retries for reliability
-        manifestLoadingRetryDelay: 1000, // 1s retry delay
-        // More generous fragment loading timeouts
-        fragLoadingTimeOut: 10000 * timeoutMultiplier, // 10s desktop, 20s mobile
-        fragLoadingMaxRetry: 3, // More retries
+        maxBufferHole: 0.5,
+        lowLatencyMode: !isMobile,
+        backBufferLength: 0,
+        manifestLoadingTimeOut: 8000 * timeoutMultiplier,
+        manifestLoadingMaxRetry: 3,
+        manifestLoadingRetryDelay: 1000,
+        fragLoadingTimeOut: 10000 * timeoutMultiplier,
+        fragLoadingMaxRetry: 3,
         fragLoadingRetryDelay: 1000,
         liveSyncDurationCount: 1,
         liveMaxLatencyDurationCount: 2,
-        // More generous XHR timeout for mobile networks
         xhrSetup: function(xhr: XMLHttpRequest) {
-          xhr.timeout = 10000 * timeoutMultiplier; // 10s desktop, 20s mobile
+          xhr.timeout = 10000 * timeoutMultiplier;
         },
-        // Start loading immediately
         startPosition: 0,
         autoStartLoad: true,
       });
@@ -338,12 +308,10 @@ function VideoPlayer({
             console.log(`✅ HLS manifest parsed in ${loadTime.toFixed(0)}ms`);
           }
         }
-        // Don't set isLoading to false here - wait for canplay event
         setError(null);
       });
       
       hls.on(HlsClass.Events.FRAG_LOADED, () => {
-        // First fragment loaded - video should be ready soon
         if (process.env.NODE_ENV === 'development') {
           console.log('📦 HLS fragment loaded');
         }
@@ -359,28 +327,21 @@ function VideoPlayer({
           
           setError(errorMsg);
           setIsLoading(false);
-          
-          // Report error
           reportVideoError(data.type, retryCount, false);
           
-          // Handle specific error types
           if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) {
-            // Network errors - retry
             retryVideo();
           } else if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) {
-            // Media errors - try to recover
             if (process.env.NODE_ENV === 'development') {
               console.log('🔄 Attempting media error recovery...');
             }
             hls.recoverMediaError();
           } else if (data.details === 'manifestLoadError' || data.details === 'manifestParsingError') {
-            // Manifest errors - retry with delay
             if (process.env.NODE_ENV === 'development') {
               console.log('📋 Manifest error - retrying...');
             }
             retryVideo();
           } else {
-            // Other fatal errors - show poster and allow manual retry
             if (process.env.NODE_ENV === 'development') {
               console.log('❌ Non-recoverable error - showing poster');
             }
@@ -392,7 +353,6 @@ function VideoPlayer({
       hls.attachMedia(video);
     };
     
-    // Start HLS setup (async)
     setupHls();
 
     return () => {
@@ -407,9 +367,8 @@ function VideoPlayer({
       }
       
       if (hlsRef.current) {
-        // Proper cleanup to prevent memory leaks and audio glitches
         try {
-          hlsRef.current.stopLoad(); // Stop loading segments
+          hlsRef.current.stopLoad();
           hlsRef.current.detachMedia();
           hlsRef.current.destroy();
         } catch (err) {
@@ -426,15 +385,14 @@ function VideoPlayer({
         video.load();
       }
     };
-  }, [currentVideo?.url, isActive, shouldPreload, networkSpeed, retryCount, retryVideo]); // Include all dependencies
+  }, [currentVideo?.url, isActive, shouldPreload, networkSpeed, retryCount, retryVideo]);
   
-  // Component unmount cleanup - NUCLEAR OPTION
+  // Component unmount cleanup
   useEffect(() => {
     const video = videoRef.current;
     
     return () => {
       if (video) {
-        // Immediately stop on unmount
         video.pause();
         video.muted = true;
         video.volume = 0;
@@ -445,7 +403,6 @@ function VideoPlayer({
         }
       }
       
-      // Destroy HLS on unmount
       if (hlsRef.current) {
         try {
           hlsRef.current.destroy();
@@ -455,7 +412,6 @@ function VideoPlayer({
         }
       }
       
-      // Clear all timeouts
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
       }
@@ -463,34 +419,29 @@ function VideoPlayer({
         clearTimeout(loadingTimeoutRef.current);
       }
     };
-  }, []); // Run once on mount/unmount
+  }, []);
 
-  // CRITICAL: Immediate pause when becoming inactive (prevent audio overlap)
-  // This MUST run BEFORE any play effects - use layout effect timing
-  useEffect(() => {
+  // CRITICAL FIX: Use useLayoutEffect for SYNCHRONOUS pause/play control
+  // Runs BEFORE browser paint, preventing any visual glitches or audio overlap
+  useLayoutEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
-    
-    let rafId: number | null = null;
+    if (!video || error) return;
 
     if (!isActive) {
-      // PENTUPLE SAFETY: Aggressively stop ALL audio
-      
-      // 1. Pause IMMEDIATELY (synchronous)
+      // ═══════════════════════════════════════════════════════════
+      // INACTIVE: Stop ALL audio and video IMMEDIATELY & SYNCHRONOUSLY
+      // ═══════════════════════════════════════════════════════════
       video.pause();
-      
-      // 2. Mute and zero volume (double safety)
       video.muted = true;
       video.volume = 0;
+      playingRef.current = false;
       
-      // 3. Set currentTime to 0 (prevents audio glitches)
       try {
         video.currentTime = 0;
       } catch (err) {
         // Ignore - might not be seekable yet
       }
       
-      // 4. Stop HLS loading to prevent buffering audio
       if (hlsRef.current) {
         try {
           hlsRef.current.stopLoad();
@@ -499,137 +450,130 @@ function VideoPlayer({
         }
       }
       
-      // 5. Set data attribute to mark as inactive (for CSS/debug)
       video.dataset.active = 'false';
       
-      // 6. Use requestAnimationFrame for extra safety (next frame)
-      rafId = requestAnimationFrame(() => {
-        if (video && !video.paused) {
-          video.pause();
-          video.muted = true;
-          video.volume = 0;
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏸️ Video STOPPED (inactive) - synchronous pause');
+      }
+      return;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ACTIVE: Setup and potentially play
+    // ═══════════════════════════════════════════════════════════
+    
+    // First, pause ALL other videos on the page (global safety)
+    if (typeof document !== 'undefined') {
+      const allVideos = document.querySelectorAll('video');
+      allVideos.forEach((otherVideo) => {
+        if (otherVideo !== video && !otherVideo.paused) {
+          otherVideo.pause();
+          otherVideo.muted = true;
+          otherVideo.volume = 0;
           if (process.env.NODE_ENV === 'development') {
-            console.warn('⚠️ Video was still playing after pause! Force stopped again.');
+            console.warn('🚨 Found rogue playing video! Force stopped.');
           }
         }
       });
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('⏸️ Video STOPPED (inactive) - 5-layer audio kill');
-      }
-    } else if (isActive) {
-      // GLOBAL SAFETY: Pause ALL other videos on the page
-      // This catches any videos that might have slipped through
-      if (typeof document !== 'undefined') {
-        const allVideos = document.querySelectorAll('video');
-        allVideos.forEach((otherVideo) => {
-          if (otherVideo !== video && !otherVideo.paused) {
-            otherVideo.pause();
-            otherVideo.muted = true;
-            otherVideo.volume = 0;
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('🚨 Found rogue playing video! Force stopped.');
-            }
-          }
-        });
-      }
-      
-      // Mark as active
-      video.dataset.active = 'true';
-      
-      // Restore mute state IMMEDIATELY
-      video.muted = isMuted;
-      video.volume = isMuted ? 0 : 1;
-      
-      // Resume HLS loading
-      if (hlsRef.current) {
-        try {
-          hlsRef.current.startLoad();
-        } catch (err) {
-          // Ignore errors
-        }
-      }
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('▶️ Video activated - ready to play');
-      }
     }
     
-    // Cleanup: cancel pending requestAnimationFrame if component re-renders
-    return () => {
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-      }
-    };
-  }, [isActive, isMuted]);
-
-  // Playback control - ONLY play when active
-  useEffect(() => {
-    const video = videoRef.current;
-    
-    if (!video || error) {
-      return;
-    }
-
-    // CRITICAL: Ensure inactive videos are ALWAYS paused
-    if (!isActive) {
-      video.pause();
-      video.muted = true;
-      video.volume = 0;
-      return;
-    }
-
-    // Only proceed if active
+    video.dataset.active = 'true';
     video.muted = isMuted;
     video.volume = isMuted ? 0 : 1;
-
-    if (shouldPlay) {
-      // Ensure video is ready before playing
-      const attemptPlay = () => {
-        playbackStartTimeRef.current = performance.now();
-        
-        video.play()
-          .then(() => {
-            const startupTime = performance.now() - playbackStartTimeRef.current;
-            
-            // Report startup time for metrics tracking
-            reportVideoStartup(startupTime, shouldPreload);
-            
-            if (process.env.NODE_ENV === 'development') {
-              const status = startupTime < 200 ? '✅' : '⚠️';
-              console.log(`${status} Video startup: ${startupTime.toFixed(0)}ms (target: < 200ms)`);
-            }
-            setShowPlayButton(false);
-            setIsLoading(false); // Clear loading on successful play
-            
-            // Clear safety timeout - video is playing now
-            if (loadingTimeoutRef.current) {
-              clearTimeout(loadingTimeoutRef.current);
-              loadingTimeoutRef.current = null;
-            }
-          })
-          .catch(err => {
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('⚠️ Play failed:', err.message, 'readyState:', video.readyState);
-            }
-            // Only show play button if it's a user interaction error
-            if (err.name === 'NotAllowedError') {
-              setShowPlayButton(true);
-            } else if (video.readyState < 2) {
-              // Video not ready yet - retry when it's ready
-              video.addEventListener('canplay', attemptPlay, { once: true });
-            }
-          });
-      };
-      
-      // Small delay to ensure cleanup has finished
-      setTimeout(attemptPlay, 50);
-    } else {
-      // Pause when shouldPlay is false (keyboard shortcut)
-      video.pause();
-      setShowPlayButton(true);
+    
+    if (hlsRef.current) {
+      try {
+        hlsRef.current.startLoad();
+      } catch (err) {
+        // Ignore errors
+      }
     }
-  }, [isActive, isMuted, error, shouldPreload, shouldPlay]);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('▶️ Video activated');
+    }
+
+    // Now handle play/pause
+    if (!shouldPlay) {
+      // User explicitly paused (keyboard shortcut)
+      video.pause();
+      userPausedRef.current = true;
+      setShowPlayButton(true);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏸️ User paused video');
+      }
+      return;
+    }
+
+    // Should play - attempt playback
+    userPausedRef.current = false;
+    playingRef.current = true;
+    playbackStartTimeRef.current = performance.now();
+    
+    const attemptPlay = () => {
+      if (!playingRef.current || !isActive) return; // Double-check we should still play
+      
+      video.play()
+        .then(() => {
+          if (!isActive || !playingRef.current) {
+            // Video became inactive during play attempt - pause it
+            video.pause();
+            return;
+          }
+          
+          const startupTime = performance.now() - playbackStartTimeRef.current;
+          reportVideoStartup(startupTime, shouldPreload);
+          
+          if (process.env.NODE_ENV === 'development') {
+            const status = startupTime < 200 ? '✅' : '⚠️';
+            console.log(`${status} Video startup: ${startupTime.toFixed(0)}ms`);
+          }
+          
+          setShowPlayButton(false);
+          setIsLoading(false);
+          
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+            loadingTimeoutRef.current = null;
+          }
+        })
+        .catch(err => {
+          if (!isActive || !playingRef.current) return; // Became inactive - ignore error
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('⚠️ Play failed:', err.message, 'readyState:', video.readyState);
+          }
+          
+          if (err.name === 'NotAllowedError') {
+            // Browser requires user interaction
+            setShowPlayButton(true);
+            userPausedRef.current = true;
+          } else if (video.readyState < 2) {
+            // Video not ready - wait for canplay event
+            const onCanPlay = () => {
+              if (isActive && playingRef.current) {
+                attemptPlay();
+              }
+            };
+            video.addEventListener('canplay', onCanPlay, { once: true });
+          }
+        });
+    };
+    
+    if (video.readyState >= 2) {
+      // Video is ready - play immediately
+      attemptPlay();
+    } else {
+      // Wait for video to be ready
+      const onCanPlay = () => {
+        if (isActive && playingRef.current) {
+          attemptPlay();
+        }
+      };
+      video.addEventListener('canplay', onCanPlay, { once: true });
+    }
+    
+  }, [isActive, isMuted, shouldPlay, error, shouldPreload]);
 
   // Video events
   useEffect(() => {
@@ -639,36 +583,25 @@ function VideoPlayer({
     const onPlay = () => {
       setIsPlaying(true);
       setShowPlayButton(false);
-      setShowPoster(false); // Hide poster on successful play
+      setShowPoster(false);
     };
 
     const onPause = () => {
       setIsPlaying(false);
-      // Only show play button if manually paused (not during transitions)
-      // Check if video should be playing - if so, don't show button
-      if (isActive && shouldPlay) {
-        // Video is paused but should be playing - this is a transition or error
-        // Don't show play button
-      } else if (isActive) {
-        // Video was manually paused - show play button
+      // Only show play button if user manually paused (not programmatic)
+      if (isActive && userPausedRef.current) {
         setShowPlayButton(true);
       }
     };
 
     const onLoadedMetadata = () => {
-      // Video metadata loaded successfully
       setShowPoster(false);
-      setIsLoading(false); // Clear loading as soon as metadata is ready
+      setIsLoading(false);
       
-      // Clear safety timeout - video is loading successfully
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
         loadingTimeoutRef.current = null;
       }
-      
-      // Try to play if active and video is ready
-      // DON'T auto-play here - let the main playback effect handle it
-      // This prevents race conditions with audio cleanup
     };
 
     const onCanPlay = () => {
@@ -678,20 +611,18 @@ function VideoPlayer({
       
       setIsLoading(false);
       
-      // Clear safety timeout - video can play now
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
         loadingTimeoutRef.current = null;
       }
       
-      // Report successful load if there was a previous error
       if (error) {
-        reportVideoError(error, retryCount, true); // Recovered!
+        reportVideoError(error, retryCount, true);
       } else {
-        reportVideoLoaded(); // Normal load
+        reportVideoLoaded();
       }
       
-      setError(null); // Clear error on successful load
+      setError(null);
     };
     
     const onLoadStart = () => {
@@ -705,17 +636,12 @@ function VideoPlayer({
       if (process.env.NODE_ENV === 'development') {
         console.log('📦 Video data loaded');
       }
-      // Video has loaded enough to start playing
       setIsLoading(false);
       
-      // Clear safety timeout - video has data now
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
         loadingTimeoutRef.current = null;
       }
-      
-      // DON'T auto-play here - let the main playback effect handle it
-      // This prevents race conditions and audio overlap
     };
     
     const onError = (e: Event) => {
@@ -734,11 +660,8 @@ function VideoPlayer({
       const errorMsg = `${errorType}: ${errorMessage}`;
       setError(errorMsg);
       setIsLoading(false);
-      
-      // Report error (will report recovery status later if retry succeeds)
       reportVideoError(errorType, retryCount, false);
       
-      // Attempt retry for network/loading errors
       if (errorCode === MediaError.MEDIA_ERR_NETWORK || errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
         retryVideo();
       } else {
@@ -763,7 +686,7 @@ function VideoPlayer({
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('error', onError);
     };
-  }, [retryVideo, error, retryCount, isActive, shouldPlay]);
+  }, [retryVideo, error, retryCount, isActive]);
 
   if (!currentVideo) {
     return (
@@ -775,7 +698,7 @@ function VideoPlayer({
 
   // Manual retry handler
   const handleManualRetry = useCallback(() => {
-    setRetryCount(0); // Reset retry count
+    setRetryCount(0);
     setError(null);
     setShowPoster(false);
     setIsLoading(true);
@@ -783,8 +706,13 @@ function VideoPlayer({
 
   const handleVideoClick = useCallback(() => {
     if (videoRef.current) {
-      if (isPlaying) videoRef.current.pause();
-      else videoRef.current.play();
+      if (isPlaying) {
+        videoRef.current.pause();
+        userPausedRef.current = true;
+      } else {
+        videoRef.current.play();
+        userPausedRef.current = false;
+      }
     }
   }, [isPlaying]);
 
@@ -801,9 +729,8 @@ function VideoPlayer({
         willChange: isActive ? 'transform' : 'auto'
       }}
     >
-      {/* Control Buttons - Top Right */}
+      {/* Control Buttons */}
       <div className="absolute top-4 right-4 z-50 flex gap-2">
-        {/* Share Button */}
         {castHash && authorUsername && (
           <button
             onClick={handleShare}
@@ -814,7 +741,6 @@ function VideoPlayer({
           </button>
         )}
         
-        {/* Mute Button */}
         <button
           onClick={handleMuteToggle}
           className="w-11 h-11 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors active:scale-95"
@@ -828,14 +754,12 @@ function VideoPlayer({
         </button>
       </div>
       
-      {/* Share Toast Notification */}
       {showShareToast && (
         <div className="absolute top-20 right-4 z-50 bg-black/80 text-white px-4 py-2 rounded-lg text-sm animate-fade-in">
           ✓ Link copied to clipboard
         </div>
       )}
 
-      {/* Poster/Thumbnail - Show on error or while loading with poster */}
       {(showPoster || (isLoading && currentVideo.thumbnail)) && currentVideo.thumbnail && (
         <div className="absolute inset-0 z-10">
           <img
@@ -843,24 +767,22 @@ function VideoPlayer({
             alt="Video thumbnail"
             className="w-full h-full object-cover"
           />
-          {/* Overlay gradient */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         </div>
       )}
 
-      {/* Video Element - ALWAYS RENDERED */}
       <video
         ref={videoRef}
         loop
         muted={isMuted}
         playsInline
-        preload="auto" // Always auto-load for instant playback
-        poster={currentVideo.thumbnail} // Native poster attribute as fallback
-        {...((isActive || shouldPreload) ? { fetchpriority: 'high' as const } : {})} // High priority for active and preloading videos
-        className={`cursor-pointer ${isVerticalVideo ? 'w-full h-full object-cover' : 'max-w-full max-h-full object-contain'}`} // Vertical: fill screen, Horizontal: center with max dimensions
+        preload="auto"
+        poster={currentVideo.thumbnail}
+        {...((isActive || shouldPreload) ? { fetchpriority: 'high' as const } : {})}
+        className={`cursor-pointer ${isVerticalVideo ? 'w-full h-full object-cover' : 'max-w-full max-h-full object-contain'}`}
         style={{ 
           display: showPoster ? 'none' : 'block',
-          transform: 'translateZ(0)', // Force GPU acceleration
+          transform: 'translateZ(0)',
           backfaceVisibility: 'hidden',
           WebkitBackfaceVisibility: 'hidden',
           backgroundColor: '#000'
@@ -868,7 +790,6 @@ function VideoPlayer({
         onClick={handleVideoClick}
       />
       
-      {/* Error Overlay - Non-blocking, allows scrolling */}
       {error && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 pointer-events-none">
           <div className="text-center p-4 pointer-events-auto">
@@ -889,14 +810,12 @@ function VideoPlayer({
         </div>
       )}
       
-      {/* Loading Overlay - Simple circular loader only */}
       {isLoading && !showPoster && !error && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
           <Icon icon="svg-spinners:ring-resize" className="w-12 h-12 text-white" />
         </div>
       )}
 
-      {/* Play Button Overlay */}
       {showPlayButton && !isLoading && (
         <div 
           className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer z-30"
@@ -920,7 +839,6 @@ function VideoPlayer({
   );
 }
 
-// Memoize VideoPlayer to prevent re-renders when props haven't changed
 export default memo(VideoPlayer, (prevProps, nextProps) => {
   return (
     prevProps.videos[0]?.url === nextProps.videos[0]?.url &&
