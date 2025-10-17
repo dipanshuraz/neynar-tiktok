@@ -118,13 +118,16 @@ export default function VideoFeed({
     if (targetIndex < videos.length) {
       setCurrentIndex(targetIndex);
       
-      // Scroll to saved position
-      setTimeout(() => {
-        const savedVideo = videoRefs.current.get(targetIndex);
-        if (savedVideo && containerRef.current) {
-          savedVideo.scrollIntoView({ behavior: 'auto', block: 'start' });
-        }
-      }, 100);
+      // Scroll to saved position - use RAF to ensure DOM is ready
+      // Double RAF for extra reliability (first schedules, second executes after paint)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const savedVideo = videoRefs.current.get(targetIndex);
+          if (savedVideo && containerRef.current) {
+            savedVideo.scrollIntoView({ behavior: 'auto', block: 'start' });
+          }
+        });
+      });
     } else {
       // Video not available, start from beginning
       if (process.env.NODE_ENV === 'development') {
@@ -351,13 +354,16 @@ export default function VideoFeed({
         setNextCursor(data.nextCursor);
         setHasMore(data.hasMore);
         
-        // Brief delay to let DOM settle, then unblock observer
-        setTimeout(() => {
-          isPaginatingRef.current = false;
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`✅ Pagination complete - observer unblocked`);
-          }
-        }, 200);
+        // Unblock observer after DOM update completes
+        // Use double RAF to ensure new videos are painted and laid out
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            isPaginatingRef.current = false;
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`✅ Pagination complete - observer unblocked`);
+            }
+          });
+        });
         
         if (process.env.NODE_ENV === 'development') {
           console.log(`📄 Next cursor: ${data.nextCursor ? data.nextCursor.substring(0, 20) + '...' : 'none'}`);
