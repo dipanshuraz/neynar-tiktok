@@ -127,7 +127,7 @@ function VideoFeedItemComponent({
                     img.src = '/default-avatar.png';
                   } else {
                     // Fallback failed - remove error handler to prevent memory leak
-                    img.onError = null;
+                    img.onerror = null;
                   }
                 }}
               />
@@ -171,7 +171,7 @@ function VideoFeedItemComponent({
                       img.src = '/default-channel.png';
                     } else {
                       // Fallback failed - remove error handler to prevent memory leak
-                      img.onError = null;
+                      img.onerror = null;
                     }
                   }}
                 />
@@ -199,7 +199,7 @@ function VideoFeedItemComponent({
                     img.src = '/default-avatar.png';
                   } else {
                     // Fallback failed - remove error handler to prevent memory leak
-                    img.onError = null;
+                    img.onerror = null;
                   }
                 }}
               />
